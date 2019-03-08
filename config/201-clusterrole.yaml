@@ -26,6 +26,7 @@ rules:
   - cronjobsources
   - githubsources
   - kuberneteseventsources
+  - bitbucketsources
   verbs: &everything
   - get
   - list
@@ -44,6 +45,7 @@ rules:
   - cronjobsources/status
   - githubsources/status
   - kuberneteseventsources/status
+  - bitbucketsources/status
   verbs:
   - get
   - update
