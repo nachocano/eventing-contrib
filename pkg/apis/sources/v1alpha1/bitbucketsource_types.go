@@ -103,13 +103,18 @@ const (
 	// BitBucketSourceConditionWebHookUUIDProvided has status True when the
 	// BitBucketSource has been configured with a webhook.
 	BitBucketSourceConditionWebHookUUIDProvided duckv1alpha1.ConditionType = "WebHookUUIDProvided"
+
+	// BitBucketSourceConditionEventTypesProvided has status True when the
+	// BitBucketSource has configured valid event types.
+	BitBucketSourceConditionEventTypesProvided duckv1alpha1.ConditionType = "EventTypesProvided"
 )
 
 var bitBucketSourceCondSet = duckv1alpha1.NewLivingConditionSet(
 	BitBucketSourceConditionSecretsProvided,
 	BitBucketSourceConditionSinkProvided,
 	BitBucketSourceConditionServiceProvided,
-	BitBucketSourceConditionWebHookUUIDProvided)
+	BitBucketSourceConditionWebHookUUIDProvided,
+	BitBucketSourceConditionEventTypesProvided)
 
 // BitBucketSourceStatus defines the observed state of BitBucketSource.
 type BitBucketSourceStatus struct {
@@ -161,6 +166,16 @@ func (s *BitBucketSourceStatus) MarkSecrets() {
 // MarkNoSecrets sets the condition that the source does not have a valid secret.
 func (s *BitBucketSourceStatus) MarkNoSecrets(reason, messageFormat string, messageA ...interface{}) {
 	bitBucketSourceCondSet.Manage(s).MarkFalse(BitBucketSourceConditionSecretsProvided, reason, messageFormat, messageA...)
+}
+
+// MarkSecrets sets the condition that the source has valid event types.
+func (s *BitBucketSourceStatus) MarkEventTypes() {
+	bitBucketSourceCondSet.Manage(s).MarkTrue(BitBucketSourceConditionEventTypesProvided)
+}
+
+// MarkNoEventTypes sets the condition that the source does not have valid event types.
+func (s *BitBucketSourceStatus) MarkNoEventTypes(reason, messageFormat string, messageA ...interface{}) {
+	bitBucketSourceCondSet.Manage(s).MarkFalse(BitBucketSourceConditionEventTypesProvided, reason, messageFormat, messageA...)
 }
 
 // MarkSink sets the condition that the source has a sink configured.

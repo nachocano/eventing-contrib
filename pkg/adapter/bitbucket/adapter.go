@@ -22,10 +22,11 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/cloudevents/sdk-go/pkg/cloudevents/types"
+
 	"github.com/cloudevents/sdk-go/pkg/cloudevents"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
-	"github.com/cloudevents/sdk-go/pkg/cloudevents/types"
-	sourcesv1alpha1 "github.com/knative/eventing-sources/pkg/apis/sources/v1alpha1"
+	"github.com/knative/eventing-sources/pkg/bitbucket/utils"
 	"gopkg.in/go-playground/webhooks.v3"
 	bb "gopkg.in/go-playground/webhooks.v3/bitbucket"
 )
@@ -73,7 +74,7 @@ func (ra *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 
 	log.Printf("Handling %s", bitBucketEventType)
 
-	cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, bitBucketEventType)
+	cloudEventType := utils.GetCloudEventType(bitBucketEventType)
 	source, err := sourceFromBitBucketEvent(bb.Event(bitBucketEventType), payload)
 	if err != nil {
 		return err

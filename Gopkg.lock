@@ -373,7 +373,19 @@
   version = "v0.2.0"
 
 [[projects]]
-  digest = "1:4cffc82f78980821bff4a0cb9874b93b87214a39e997639ce3aa67ed931c3b8d"
+  digest = "1:d41e5d6860095915c06a14ae9861b8f29b93754847d54bd2592766d5e51e52e0"
+  name = "github.com/knative/eventing"
+  packages = [
+    "pkg/apis/duck/v1alpha1",
+    "pkg/apis/eventing",
+    "pkg/apis/eventing/v1alpha1",
+  ]
+  pruneopts = "NUT"
+  revision = "edbed928d017a066271673d25da9188054afbfd8"
+  source = "github.com/nachocano/eventing"
+
+[[projects]]
+  digest = "1:c970e3c803340ac7fec0785e64d488d2dd3869fd5f6198f69f091f1900c434e0"
   name = "github.com/knative/pkg"
   packages = [
     "apis",
@@ -386,6 +398,7 @@
     "logging",
     "logging/logkey",
     "signals",
+    "webhook",
   ]
   pruneopts = "NUT"
   revision = "1982208dd91a4cc4fea9612e4e72fb109c77ab22"
@@ -1297,6 +1310,7 @@
     "github.com/google/go-github/github",
     "github.com/gorilla/websocket",
     "github.com/kelseyhightower/envconfig",
+    "github.com/knative/eventing/pkg/apis/eventing/v1alpha1",
     "github.com/knative/pkg/apis",
     "github.com/knative/pkg/apis/duck",
     "github.com/knative/pkg/apis/duck/v1alpha1",
