@@ -95,3 +95,10 @@ rules:
   resources:
   - brokers
   verbs: *readOnly
+
+# EventTypes read
+- apiGroups:
+  - eventing.knative.dev
+  resources:
+  - eventtypes
+  verbs: *everything
