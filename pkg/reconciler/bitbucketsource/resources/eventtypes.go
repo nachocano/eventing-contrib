@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	bitBucketOrigin = "bitbucket.com"
+	bitBucketOrigin = "bitbucket.org"
 )
 
 var (

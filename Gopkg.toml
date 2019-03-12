@@ -103,5 +103,5 @@ required = [
 [[override]]
 name = "github.com/knative/eventing"
 source = "github.com/nachocano/eventing"
-# branch = "registry"
-revision = "edbed928d017a066271673d25da9188054afbfd8"
+branch = "registry"
+# revision = "edbed928d017a066271673d25da9188054afbfd8"
