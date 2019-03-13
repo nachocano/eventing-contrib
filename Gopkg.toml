@@ -98,10 +98,3 @@ required = [
 [[override]]
   name = "github.com/cloudevents/sdk-go"
   revision = "d50361a5655081514f406b4e672d72e9886c17ad"
-
-# Use Registry prototype.
-[[override]]
-name = "github.com/knative/eventing"
-source = "github.com/nachocano/eventing"
-branch = "registry"
-# revision = "edbed928d017a066271673d25da9188054afbfd8"
