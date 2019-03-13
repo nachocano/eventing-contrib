@@ -254,7 +254,7 @@ func (r *reconciler) reconcileWebHook(ctx context.Context, source *sourcesv1alph
 }
 
 func (r *reconciler) reconcileEventTypes(ctx context.Context, source *sourcesv1alpha1.BitBucketSource) error {
-	_, err := r.getEventTypes(ctx, source)
+	_, err := r.getEventTypes(ctx)
 	expected := r.newEventTypes(source)
 
 	// If they do not exist, we'll create them.
@@ -277,12 +277,11 @@ func (r *reconciler) reconcileEventTypes(ctx context.Context, source *sourcesv1a
 	return nil
 }
 
-func (r *reconciler) getEventTypes(ctx context.Context, source *sourcesv1alpha1.BitBucketSource) ([]eventingv1alpha1.EventType, error) {
+func (r *reconciler) getEventTypes(ctx context.Context) ([]eventingv1alpha1.EventType, error) {
 	eventTypes := make([]eventingv1alpha1.EventType, 0)
 
 	opts := &client.ListOptions{
-		Namespace:     source.Namespace,
-		LabelSelector: labels.SelectorFromSet(utils.EventTypesLabels(source)),
+		LabelSelector: labels.SelectorFromSet(utils.EventTypesLabels()),
 		// Set Raw because if we need to get more than one page, then we will put the continue token
 		// into opts.Raw.Continue.
 		Raw: &metav1.ListOptions{},
@@ -468,8 +467,7 @@ func (r *reconciler) newService(source *sourcesv1alpha1.BitBucketSource) (*servi
 }
 
 func (r *reconciler) newEventTypes(source *sourcesv1alpha1.BitBucketSource) []eventingv1alpha1.EventType {
-	owner, repo, _ := r.ownerRepoFrom(source)
-	return resources.MakeEventTypes(source, owner, repo)
+	return resources.MakeEventTypes(source)
 }
 
 func (r *reconciler) addFinalizer(s *sourcesv1alpha1.BitBucketSource) {

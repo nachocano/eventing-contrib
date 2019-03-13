@@ -26,8 +26,8 @@ func GetCloudEventType(eventType string) string {
 	return fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, eventType)
 }
 
-func EventTypesLabels(bs *sourcesv1alpha1.BitBucketSource) map[string]string {
+func EventTypesLabels() map[string]string {
 	return map[string]string{
-		"eventing.knative.dev/sources": bs.Name,
+		"eventing.knative.dev/eventtypes": "bitbucket",
 	}
 }

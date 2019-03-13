@@ -39,20 +39,19 @@ var (
 )
 
 // MakeEventTypes generates, but does not create, EventTypes for the given BitBucketSource.
-func MakeEventTypes(source *sourcesv1alpha1.BitBucketSource, owner, repository string) []eventingv1alpha1.EventType {
+func MakeEventTypes(source *sourcesv1alpha1.BitBucketSource) []eventingv1alpha1.EventType {
 	eventTypes := make([]eventingv1alpha1.EventType, 0, len(source.Spec.EventTypes))
 	for _, e := range source.Spec.EventTypes {
 		cloudEventType := utils.GetCloudEventType(e)
 		eventType := eventingv1alpha1.EventType{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: fmt.Sprintf("%s-", toValidIdentifier(cloudEventType)),
-				Namespace:    source.Namespace,
-				Labels:       utils.EventTypesLabels(source),
+				Labels:       utils.EventTypesLabels(),
 			},
 			Spec: eventingv1alpha1.EventTypeSpec{
 				Type:   cloudEventType,
-				Source: "TODO",
 				Origin: bitBucketOrigin,
+				// TODO populate the schema.
 				Schema: "",
 			},
 		}

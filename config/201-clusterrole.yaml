@@ -96,7 +96,7 @@ rules:
   - brokers
   verbs: *readOnly
 
-# EventTypes read
+# EventTypes admin
 - apiGroups:
   - eventing.knative.dev
   resources:
