@@ -209,7 +209,8 @@ func (r *reconciler) newEventTypes(crd *v1beta1.CustomResourceDefinition, namesp
 			if eTypes, ok := spec.Properties["eventTypes"]; ok {
 				if eTypes.Items != nil && eTypes.Items.Schema != nil {
 					for _, eType := range eTypes.Items.Schema.Enum {
-						et := strings.TrimSpace(string(eType.Raw))
+						// Remove quotes.
+						et := strings.Trim(string(eType.Raw), `"`)
 						eventType := eventingv1alpha1.EventType{
 							ObjectMeta: metav1.ObjectMeta{
 								GenerateName: fmt.Sprintf("%s-", toValidIdentifier(et)),
@@ -238,7 +239,9 @@ func difference(current []eventingv1alpha1.EventType, expected []eventingv1alpha
 	for _, e := range expected {
 		found := false
 		for _, c := range current {
-			if e.Spec.Type == c.Spec.Type && e.Spec.Origin == c.Spec.Origin && e.Spec.Schema == c.Spec.Schema {
+			if e.Spec.Type == c.Spec.Type &&
+				e.Spec.Origin == c.Spec.Origin &&
+				e.Spec.Schema == c.Spec.Schema {
 				found = true
 				break
 			}
