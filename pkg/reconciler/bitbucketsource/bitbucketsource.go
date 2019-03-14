@@ -19,7 +19,6 @@ package bitbucketsource
 import (
 	"context"
 	"fmt"
-	"github.com/knative/eventing-sources/pkg/bitbucket/utils"
 	"os"
 	"strings"
 
@@ -27,7 +26,6 @@ import (
 	"github.com/knative/eventing-sources/pkg/controller/sdk"
 	"github.com/knative/eventing-sources/pkg/controller/sinks"
 	"github.com/knative/eventing-sources/pkg/reconciler/bitbucketsource/resources"
-	eventingv1alpha1 "github.com/knative/eventing/pkg/apis/eventing/v1alpha1"
 	"github.com/knative/pkg/logging"
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	"go.uber.org/zap"
@@ -62,8 +60,6 @@ const (
 	webhookCreateFailed    = "WebHookCreateFailed"
 	serviceCreated         = "ServiceCreated"
 	serviceCreateFailed    = "ServiceCreateFailed"
-	eventTypesCreated      = "EventTypesCreated"
-	eventTypesCreateFailed = "EventTypesCreateFailed"
 )
 
 type webhookArgs struct {
@@ -85,7 +81,7 @@ func Add(mgr manager.Manager) error {
 	p := &sdk.Provider{
 		AgentName: controllerAgentName,
 		Parent:    &sourcesv1alpha1.BitBucketSource{},
-		Owns:      []runtime.Object{&servingv1alpha1.Service{}, &eventingv1alpha1.EventType{}},
+		Owns:      []runtime.Object{&servingv1alpha1.Service{}},
 		Reconciler: &reconciler{
 			recorder:            mgr.GetRecorder(controllerAgentName),
 			scheme:              mgr.GetScheme(),
@@ -169,12 +165,6 @@ func (r *reconciler) reconcile(ctx context.Context, source *sourcesv1alpha1.BitB
 		return err
 	}
 	source.Status.MarkWebHook(hookUUID)
-
-	err = r.reconcileEventTypes(ctx, source)
-	if err != nil {
-		return err
-	}
-	source.Status.MarkEventTypes()
 
 	// If the webhook was created, but there's a failure updating its status in the sdk/reconciler.go,
 	// we might end up creating another webhook. We record the webhook creation event so that it can be
@@ -274,60 +264,6 @@ func (r *reconciler) reconcileService(ctx context.Context, source *sourcesv1alph
 	}
 
 	return current, nil
-}
-
-func (r *reconciler) reconcileEventTypes(ctx context.Context, source *sourcesv1alpha1.BitBucketSource) error {
-	_, err := r.getEventTypes(ctx)
-	expected := r.newEventTypes(source)
-
-	// If they do not exist, we'll create them.
-	if apierrors.IsNotFound(err) {
-		err = r.client.Create(ctx,
-			&eventingv1alpha1.EventTypeList{
-				Items: expected,
-			})
-		if err != nil {
-			r.recorder.Eventf(source, corev1.EventTypeWarning, eventTypesCreateFailed, "Could not create event types: %v", err)
-			source.Status.MarkNoEventTypes(eventTypesCreateFailed, "%s", err)
-			return err
-		}
-		r.recorder.Eventf(source, corev1.EventTypeNormal, eventTypesCreated, "Event types created for source %q", source.Name)
-		return nil
-	} else if err != nil {
-		return err
-	}
-	// TODO Check if there are less than expected, or if they are different, and create them...
-	return nil
-}
-
-func (r *reconciler) getEventTypes(ctx context.Context) ([]eventingv1alpha1.EventType, error) {
-	eventTypes := make([]eventingv1alpha1.EventType, 0)
-
-	opts := &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(utils.EventTypesLabels(resources.BitBucketOrigin)),
-		// Set Raw because if we need to get more than one page, then we will put the continue token
-		// into opts.Raw.Continue.
-		Raw: &metav1.ListOptions{},
-	}
-	for {
-		el := &eventingv1alpha1.EventTypeList{}
-		if err := r.client.List(ctx, opts, el); err != nil {
-			return nil, err
-		}
-
-		for _, e := range el.Items {
-			eventTypes = append(eventTypes, e)
-		}
-		if el.Continue != "" {
-			opts.Raw.Continue = el.Continue
-		} else {
-			return eventTypes, nil
-		}
-	}
-}
-
-func (r *reconciler) newEventTypes(source *sourcesv1alpha1.BitBucketSource) []eventingv1alpha1.EventType {
-	return resources.MakeEventTypes(source)
 }
 
 func (r *reconciler) createWebhook(ctx context.Context, args *webhookArgs) (string, error) {
