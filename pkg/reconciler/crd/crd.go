@@ -118,17 +118,18 @@ func (r *reconciler) reconcile(ctx context.Context, crd *v1beta1.CustomResourceD
 	logger := logging.FromContext(ctx)
 
 	if crd.Labels[eventingSourceLabelKey] != eventingSourceLabelValue {
-		logger.Debugf("Not reconciling CRD %s", crd.Name)
+		logger.Debugf("Not reconciling CRD %q", crd.Name)
 		return nil
 	}
 
-	logger.Infof("Reconciling CRD %s", crd.Name)
+	logger.Infof("Reconciling CRD %q", crd.Name)
 
 	err := r.reconcileNamespaces(ctx, crd)
 	if err != nil {
-		logger.Errorf("Error reconciling namespaces, %v", err)
 		return err
 	}
+
+	logger.Infof("Reconciled CRD %q", crd.Name)
 
 	return nil
 }
@@ -143,10 +144,10 @@ func (r *reconciler) reconcileNamespaces(ctx context.Context, crd *v1beta1.Custo
 	for _, eventingNamespace := range eventingNamespaces {
 		err := r.reconcileEventTypes(ctx, crd, eventingNamespace)
 		if err != nil {
-			logger.Errorf("Error reconciling EventTypes for namespace %s", eventingNamespace.Name)
+			logger.Errorf("Error reconciling EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
 			return err
 		}
-		logger.Infof("Reconciled EventTypes for namespace %s", eventingNamespace.Name)
+		logger.Infof("Reconciled EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
 	}
 	return nil
 }
@@ -302,9 +303,38 @@ func toValidIdentifier(eventType string) string {
 }
 
 func (r *reconciler) finalize(ctx context.Context, crd *v1beta1.CustomResourceDefinition) error {
-	// should look at all the namespaces with knative enabled
-	// and remove the eventtypes from there
-	// eventing.knative.dev/source=true
+	logger := logging.FromContext(ctx)
+	eventingNamespaces, err := r.getEventingNamespaces(ctx, crd)
+	if err != nil {
+		logger.Errorf("Error finalizing CRD %s", crd.Name)
+		return err
+	}
+
+	for _, eventingNamespace := range eventingNamespaces {
+		err := r.deleteEventTypes(ctx, crd, eventingNamespace)
+		if err != nil {
+			logger.Errorf("Error deleting EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
+			return err
+		}
+		logger.Infof("Deleted EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
+	}
+	return nil
+}
+
+func (r *reconciler) deleteEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace corev1.Namespace) error {
+	current, err := r.getEventTypes(ctx, crd, namespace)
+	if err != nil {
+		return err
+	}
+	if len(current) > 0 {
+		// TODO bulk deletion?
+		for _, eventType := range current {
+			err = r.client.Delete(ctx, &eventType)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
