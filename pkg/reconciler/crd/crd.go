@@ -64,6 +64,21 @@ const (
 var (
 	// Only allow alphanumeric, '-' or '.'.
 	validChars = regexp.MustCompile(`[^-\.a-z0-9]+`)
+
+	// TODO make these constants and accessible from different places (e.g., adaptors)
+	// This is needed because this sources do not explicitly define the eventTypes they
+	// can produce in their CRD. We may need to try to "standarize" CRDs specs for sources.
+	// Question: Why are we changing the eventType for some but not all sources?
+	// E.g., for github we do, but for gcp we don't.
+	eventTypeFromCrd = map[string]string{
+		"awssqssources.sources.eventing.knative.dev":          "aws.sqs.message",
+		"cronjobsources.sources.eventing.knative.dev":         "dev.knative.cronjob.event",
+		"kuberneteseventsources.sources.eventing.knative.dev": "dev.knative.k8s.event",
+		// Can be another eventType in GCPPubSub?
+		"gcppubsubsources.sources.eventing.knative.dev": "google.pubsub.topic.publish",
+		// What about container sources eventTypes?
+		"containersources.sources.eventing.knative.dev": "dev.knative.container.event",
+	}
 )
 
 // Add creates a new CRD Controller and adds it to the
@@ -205,33 +220,43 @@ func (r *reconciler) newEventTypes(crd *v1beta1.CustomResourceDefinition, namesp
 	if crd.Spec.Validation != nil && crd.Spec.Validation.OpenAPIV3Schema != nil {
 		properties := crd.Spec.Validation.OpenAPIV3Schema.Properties
 		if spec, ok := properties["spec"]; ok {
-			// TODO what about the sources that do not specify eventTypes.
-			// Might need to standarize the sources fields.
 			if eTypes, ok := spec.Properties["eventTypes"]; ok {
 				if eTypes.Items != nil && eTypes.Items.Schema != nil {
 					for _, eType := range eTypes.Items.Schema.Enum {
 						// Remove quotes.
 						et := strings.Trim(string(eType.Raw), `"`)
-						eventType := eventingv1alpha1.EventType{
-							ObjectMeta: metav1.ObjectMeta{
-								GenerateName: fmt.Sprintf("%s-", toValidIdentifier(et)),
-								Labels:       eventTypesLabels(crd.Name),
-								Namespace:    namespace.Name,
-							},
-							Spec: eventingv1alpha1.EventTypeSpec{
-								Type:   et,
-								Origin: crd.Name,
-								// TODO schema in the CRD?
-								Schema: "",
-							},
-						}
+						eventType := makeEventType(crd, namespace, et)
 						eventTypes = append(eventTypes, eventType)
 					}
+				}
+			} else {
+				// This ugly hack is just for sources that do not specify the eventTypes they can produce.
+				// We should probably try to "standarize" CRD spec fields across sources.
+				// At least to say what eventTypes they can produce.
+				if et, ok := eventTypeFromCrd[crd.Name]; ok {
+					eventType := makeEventType(crd, namespace, et)
+					eventTypes = append(eventTypes, eventType)
 				}
 			}
 		}
 	}
 	return eventTypes
+}
+
+func makeEventType(crd *v1beta1.CustomResourceDefinition, namespace corev1.Namespace, eventType string) eventingv1alpha1.EventType {
+	return eventingv1alpha1.EventType{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-", toValidIdentifier(eventType)),
+			Labels:       eventTypesLabels(crd.Name),
+			Namespace:    namespace.Name,
+		},
+		Spec: eventingv1alpha1.EventTypeSpec{
+			Type:   eventType,
+			Origin: crd.Name,
+			// TODO schema in the CRD?
+			Schema: "",
+		},
+	}
 }
 
 func difference(current []eventingv1alpha1.EventType, expected []eventingv1alpha1.EventType) []eventingv1alpha1.EventType {
