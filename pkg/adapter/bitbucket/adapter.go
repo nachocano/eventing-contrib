@@ -76,7 +76,8 @@ func (ra *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 
 	log.Printf("Handling %s", bitBucketEventType)
 
-	cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, bitBucketEventType)
+	// Not changing the type.
+	// cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, bitBucketEventType)
 	source, err := sourceFromBitBucketEvent(bb.Event(bitBucketEventType), payload)
 	if err != nil {
 		return err
@@ -85,7 +86,7 @@ func (ra *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
 			ID:         eventID,
-			Type:       cloudEventType,
+			Type:       bitBucketEventType,
 			Source:     *source,
 			Extensions: extensions,
 		}.AsV02(),

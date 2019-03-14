@@ -27,9 +27,7 @@ import (
 	"log"
 	"net/http"
 
-	sourcesv1alpha1 "github.com/knative/eventing-sources/pkg/apis/sources/v1alpha1"
-
-	webhooks "gopkg.in/go-playground/webhooks.v3"
+	"gopkg.in/go-playground/webhooks.v3"
 	gh "gopkg.in/go-playground/webhooks.v3/github"
 )
 
@@ -76,7 +74,8 @@ func (ra *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 
 	log.Printf("Handling %s", gitHubEventType)
 
-	cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.GitHubSourceEventPrefix, gitHubEventType)
+	// Not changing the type.
+	// cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.GitHubSourceEventPrefix, gitHubEventType)
 	source, err := sourceFromGitHubEvent(gh.Event(gitHubEventType), payload)
 	if err != nil {
 		return err
@@ -85,7 +84,7 @@ func (ra *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
 			ID:         eventID,
-			Type:       cloudEventType,
+			Type:       gitHubEventType,
 			Source:     *source,
 			Extensions: extensions,
 		}.AsV02(),
