@@ -26,9 +26,8 @@ import (
 	"strings"
 	"testing"
 
+	cehttp "github.com/cloudevents/sdk-go/pkg/cloudevents/transport/http"
 	"github.com/google/go-cmp/cmp"
-	"github.com/knative/pkg/cloudevents"
-
 	"gopkg.in/go-playground/webhooks.v3"
 	bb "gopkg.in/go-playground/webhooks.v3/bitbucket"
 )
@@ -282,20 +281,32 @@ func (tc *testCase) runner(t *testing.T, ra Adapter) func(t *testing.T) {
 }
 
 func (tc *testCase) handleRequest(req *http.Request) (*http.Response, error) {
-	rawContext, err := cloudevents.Binary.FromRequest(nil, req)
-	cloudEvent := rawContext.AsV02()
+	codec := cehttp.Codec{}
+
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	msg := &cehttp.Message{
+		Header: req.Header,
+		Body:   body,
+	}
+
+	event, err := codec.Decode(msg)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error decoding cloudevent: %s", err)
 	}
 
-	if tc.wantCloudEventType != "" && tc.wantCloudEventType != cloudEvent.Type {
+	if tc.wantCloudEventType != "" && tc.wantCloudEventType != event.Type() {
 		return nil, fmt.Errorf("want cloud event type %s, got %s",
-			tc.wantCloudEventType, cloudEvent.Type)
+			tc.wantCloudEventType, event.Type())
 	}
 
-	if tc.wantCloudEventSource != "" && tc.wantCloudEventSource != cloudEvent.Source {
+	gotSource := event.Context.AsV02().Source
+
+	if tc.wantCloudEventSource != "" && tc.wantCloudEventSource != gotSource.String() {
 		return nil, fmt.Errorf("want source %s, got %s",
-			tc.wantCloudEventSource, cloudEvent.Source)
+			tc.wantCloudEventSource, gotSource.String())
 	}
 
 	return &http.Response{
@@ -345,13 +356,15 @@ type requestValidation struct {
 func TestHandleEvent(t *testing.T) {
 	eventID := "12345"
 	eventType := "repo:push"
+	// testType := "dev.knative.source.bitbucket.repo:push"
+	testType := eventType
 
 	expectedRequest := requestValidation{
 		Headers: map[string][]string{
 			"ce-specversion":  {"0.2"},
 			"ce-id":           {"12345"},
 			"ce-time":         {"2019-01-29T09:35:10.69383396-08:00"},
-			"ce-type":         {"dev.knative.source.bitbucket.repo:push"},
+			"ce-type":         {testType},
 			"ce-source":       {testSource},
 			"ce-request-uuid": {`"12345"`},
 			"ce-event-key":    {`"repo:push"`},
