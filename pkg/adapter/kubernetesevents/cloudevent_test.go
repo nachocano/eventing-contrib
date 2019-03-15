@@ -53,12 +53,16 @@ func TestCloudEventFrom(t *testing.T) {
 		InvolvedObject: ref,
 	}
 
+	extensions := map[string]interface{}{
+		eventFromKey: eventFromValue,
+	}
 	want := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
-			Type:   eventType,
-			ID:     string(uid),
-			Source: *cetypes.ParseURLRef(refLink),
-			Time:   &cetypes.Timestamp{Time: now},
+			Type:       eventType,
+			ID:         string(uid),
+			Source:     *cetypes.ParseURLRef(refLink),
+			Time:       &cetypes.Timestamp{Time: now},
+			Extensions: extensions,
 		}.AsV02(),
 		Data: event,
 	}

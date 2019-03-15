@@ -26,6 +26,7 @@ rules:
   - cronjobsources
   - githubsources
   - kuberneteseventsources
+  - bitbucketsources
   verbs: &everything
   - get
   - list
@@ -44,6 +45,7 @@ rules:
   - cronjobsources/status
   - githubsources/status
   - kuberneteseventsources/status
+  - bitbucketsources/status
   verbs:
   - get
   - update
@@ -86,3 +88,31 @@ rules:
   resources:
   - events
   verbs: *everything
+
+# Brokers read
+- apiGroups:
+  - eventing.knative.dev
+  resources:
+  - brokers
+  verbs: *readOnly
+
+# EventTypes admin
+- apiGroups:
+  - eventing.knative.dev
+  resources:
+  - eventtypes
+  verbs: *everything
+
+# CRDs read
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs: *readOnly
+
+# Namespace read
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs: *readOnly

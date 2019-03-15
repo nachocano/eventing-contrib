@@ -18,6 +18,7 @@ package awssqs
 
 import (
 	"fmt"
+	"github.com/knative/eventing-sources/pkg/kncloudevents"
 	"strconv"
 	"strings"
 	"time"
@@ -34,13 +35,14 @@ import (
 )
 
 const (
-	eventType = "aws.sqs.message"
+	eventType      = "aws.sqs.message"
+	eventFromKey   = "Event-From"
+	eventFromValue = "awssqssource"
 )
 
 // Adapter implements the AWS SQS adapter to deliver SQS messages from
 // an SQS queue to a Sink.
 type Adapter struct {
-
 	// QueueURL is the AWS SQS URL that we're polling messages from
 	QueueURL string
 
@@ -77,11 +79,27 @@ func getRegion(url string) (string, error) {
 	return parts[1], nil
 }
 
+// Initialize cloudevent client
+func (a *Adapter) initClient() error {
+	if a.client == nil {
+		var err error
+		if a.client, err = kncloudevents.NewDefaultClient(a.SinkURI); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *Adapter) Start(ctx context.Context, stopCh <-chan struct{}) error {
 
 	logger := logging.FromContext(ctx)
 
 	logger.Info("Starting with config: ", zap.Any("adapter", a))
+
+	if err := a.initClient(); err != nil {
+		logger.Error("Failed to create cloudevent client", zap.Error(err))
+		return err
+	}
 
 	region, err := getRegion(a.QueueURL)
 	if err != nil {
@@ -155,18 +173,6 @@ func (a *Adapter) receiveMessage(ctx context.Context, m *sqs.Message, ack func()
 
 // postMessage sends an SQS event to the SinkURI
 func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m *sqs.Message) error {
-	if a.client == nil {
-
-		var err error
-		if a.client, err = client.NewHTTPClient(
-			client.WithTarget(a.SinkURI),
-			client.WithHTTPBinaryEncoding(),
-			client.WithUUIDs(),
-			client.WithTimeNow(),
-		); err != nil {
-			return err
-		}
-	}
 
 	// TODO verify the timestamp conversion
 	timestamp, err := strconv.ParseInt(*m.Attributes["SentTimestamp"], 10, 64)
@@ -174,17 +180,24 @@ func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m 
 		logger.Errorw("Failed to unmarshal the message.", zap.Error(err), zap.Any("message", m.Body))
 		timestamp = time.Now().UnixNano()
 	}
+
+	extensions := map[string]interface{}{
+		eventFromKey: eventFromValue,
+	}
+
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
-			ID:     *m.MessageId,
-			Type:   eventType,
-			Source: *types.ParseURLRef(a.QueueURL),
-			Time:   &types.Timestamp{Time: time.Unix(timestamp, 0)},
+			ID:         *m.MessageId,
+			Type:       eventType,
+			Source:     *types.ParseURLRef(a.QueueURL),
+			Time:       &types.Timestamp{Time: time.Unix(timestamp, 0)},
+			Extensions: extensions,
 		}.AsV02(),
 		Data: m,
 	}
 
-	return a.client.Send(context.TODO(), event)
+	_, err = a.client.Send(context.TODO(), event)
+	return err
 }
 
 // poll reads messages from the queue in batches of a given maximum size.
