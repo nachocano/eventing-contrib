@@ -81,7 +81,6 @@ const (
 	// BitBucketSourceEventPrefix is what all BitBucket event types get
 	// prefixed with when converting to CloudEvent EventType
 	BitBucketSourceEventPrefix = "dev.knative.source.bitbucket"
-	BitBucketOrigin            = "bitbucket.org"
 )
 
 const (

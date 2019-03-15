@@ -356,19 +356,16 @@ type requestValidation struct {
 func TestHandleEvent(t *testing.T) {
 	eventID := "12345"
 	eventType := "repo:push"
-	// testType := "dev.knative.source.bitbucket.repo:push"
-	testType := eventType
 
 	expectedRequest := requestValidation{
 		Headers: map[string][]string{
 			"ce-specversion":  {"0.2"},
 			"ce-id":           {"12345"},
 			"ce-time":         {"2019-01-29T09:35:10.69383396-08:00"},
-			"ce-type":         {testType},
+			"ce-type":         {eventType},
 			"ce-source":       {testSource},
 			"ce-request-uuid": {`"12345"`},
 			"ce-event-key":    {`"repo:push"`},
-			"ce-origin":       {`"bitbucket.org"`},
 			"content-type":    {"application/json"},
 		},
 		Body: `{"actor":{"type":"","username":"","display_name":"","uuid":"","links":{"self":{"href":""},"html":{"href":""},"avatar":{"href":""}}},"repository":{"type":"","links":{"self":{"href":"http://bitbucket.com/a/b"},"html":{"href":""},"avatar":{"href":""}},"uuid":"","project":{"type":"","project":"","uuid":"","links":{"html":{"href":""},"avatar":{"href":""}},"key":""},"full_name":"","name":"","website":"","owner":{"type":"","username":"","display_name":"","uuid":"","links":{"self":{"href":""},"html":{"href":""},"avatar":{"href":""}}},"scm":"","is_private":false},"push":{"changes":null}}`,

@@ -28,7 +28,6 @@ import (
 
 	"github.com/cloudevents/sdk-go/pkg/cloudevents"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
-	sourcesv1alpha1 "github.com/knative/eventing-sources/pkg/apis/sources/v1alpha1"
 	"gopkg.in/go-playground/webhooks.v3"
 	bb "gopkg.in/go-playground/webhooks.v3/bitbucket"
 )
@@ -36,7 +35,6 @@ import (
 const (
 	bbRequestUUID = "Request-UUID"
 	bbEventKey    = "Event-Key"
-	bbOrigin      = "Origin"
 )
 
 // Adapter converts incoming BitBucket webhook events to CloudEvents and
@@ -71,7 +69,7 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	extensions := map[string]interface{}{
 		bbEventKey:    bitBucketEventType,
 		bbRequestUUID: eventID,
-		bbOrigin:      sourcesv1alpha1.BitBucketOrigin,
+		// TODO should add from extension
 	}
 
 	log.Printf("Handling %s", bitBucketEventType)
