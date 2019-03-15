@@ -80,16 +80,11 @@ func (r *reconciler) Reconcile(ctx context.Context, object runtime.Object) error
 		return err
 	}
 
-	// Disabling CRD controller as there can be a race condition between the namespace controller
-	// and this one, where we end up with duplicated EventTypes.
-	// TODO find a better way.
 	var reconcileErr error
 	if accessor.GetDeletionTimestamp() == nil {
-		// reconcileErr = r.reconcile(ctx, crd)
-		reconcileErr = nil
+		reconcileErr = r.reconcile(ctx, crd)
 	} else {
-		// reconcileErr = r.finalize(ctx, crd)
-		reconcileErr = nil
+		reconcileErr = r.finalize(ctx, crd)
 	}
 	return reconcileErr
 }

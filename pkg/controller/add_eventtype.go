@@ -17,12 +17,14 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/knative/eventing-sources/pkg/reconciler/eventtype/crd"
 	"github.com/knative/eventing-sources/pkg/reconciler/eventtype/namespace"
 )
 
 func init() {
 	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
-	AddToManagerFuncs = append(AddToManagerFuncs, crd.Add)
 	AddToManagerFuncs = append(AddToManagerFuncs, namespace.Add)
+	// Disabling CRD controller as there can be a race condition between the namespace controller
+	// and this one, where we end up with duplicated EventTypes.
+	// TODO find a better way to do this.
+	// AddToManagerFuncs = append(AddToManagerFuncs, crd.Add)
 }
