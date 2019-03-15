@@ -120,6 +120,12 @@ func GetEventTypes(c client.Client, ctx context.Context, crd *v1beta1.CustomReso
 	}
 }
 
+func EventTypesLabels(objName string) map[string]string {
+	return map[string]string{
+		eventingEventTypeLabelKey: objName,
+	}
+}
+
 func newEventTypes(crd *v1beta1.CustomResourceDefinition, namespace corev1.Namespace) []eventingv1alpha1.EventType {
 	eventTypes := make([]eventingv1alpha1.EventType, 0)
 	if crd.Spec.Validation != nil && crd.Spec.Validation.OpenAPIV3Schema != nil {
@@ -157,8 +163,7 @@ func makeEventType(crd *v1beta1.CustomResourceDefinition, namespace corev1.Names
 		},
 		Spec: eventingv1alpha1.EventTypeSpec{
 			Type: eventType,
-			// TODO might be better the singular: crd.Spec.Names.Singular
-			From: crd.Name,
+			From: strings.ToLower(crd.Spec.Names.Kind),
 			// TODO schema in the CRD?
 			Schema: "",
 		},
@@ -183,12 +188,6 @@ func difference(current []eventingv1alpha1.EventType, expected []eventingv1alpha
 		}
 	}
 	return difference
-}
-
-func EventTypesLabels(objName string) map[string]string {
-	return map[string]string{
-		eventingEventTypeLabelKey: objName,
-	}
 }
 
 func toValidIdentifier(eventType string) string {

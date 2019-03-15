@@ -34,6 +34,8 @@ import (
 const (
 	GHHeaderEvent    = "GitHub-Event"
 	GHHeaderDelivery = "GitHub-Delivery"
+	eventFromKey     = "Event-From"
+	eventFromValue   = "githubsource"
 )
 
 // Adapter converts incoming GitHub webhook events to CloudEvents and
@@ -68,6 +70,7 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	extensions := map[string]interface{}{
 		GHHeaderEvent:    gitHubEventType,
 		GHHeaderDelivery: eventID,
+		eventFromKey:     eventFromValue,
 	}
 
 	log.Printf("Handling %s", gitHubEventType)

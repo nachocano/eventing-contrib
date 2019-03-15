@@ -33,8 +33,10 @@ import (
 )
 
 const (
-	bbRequestUUID = "Request-UUID"
-	bbEventKey    = "Event-Key"
+	bbRequestUUID    = "Request-UUID"
+	bbEventKey       = "Event-Key"
+	bbEventFromKey   = "Event-From"
+	bbEventFromValue = "bitbucketsource"
 )
 
 // Adapter converts incoming BitBucket webhook events to CloudEvents and
@@ -67,9 +69,9 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	bitBucketEventType := hdr.Get("X-" + bbEventKey)
 	eventID := hdr.Get("X-" + bbRequestUUID)
 	extensions := map[string]interface{}{
-		bbEventKey:    bitBucketEventType,
-		bbRequestUUID: eventID,
-		// TODO should add from extension
+		bbEventKey:     bitBucketEventType,
+		bbRequestUUID:  eventID,
+		bbEventFromKey: bbEventFromValue,
 	}
 
 	log.Printf("Handling %s", bitBucketEventType)

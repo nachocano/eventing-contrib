@@ -36,6 +36,9 @@ const (
 	// it as the Cloud Event type so as to preserve types that flow
 	// through the Receive Adapter.
 	eventTypeOverrideKey = "ce-type"
+
+	eventFromKey   = "Event-From"
+	eventFromValue = "gcppubsubsource"
 )
 
 // Adapter implements the GCP Pub/Sub adapter to deliver Pub/Sub messages from
@@ -105,6 +108,10 @@ func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m 
 		logger.Infof("overriding the cloud event type with %q", et)
 	}
 
+	extensions := map[string]interface{}{
+		eventFromKey: eventFromValue,
+	}
+
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
 			Type:        et,
@@ -112,6 +119,7 @@ func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m 
 			Time:        &types.Timestamp{Time: m.PublishTime()},
 			Source:      *types.ParseURLRef(a.source),
 			ContentType: cloudevents.StringOfApplicationJSON(),
+			Extensions:  extensions,
 		}.AsV02(),
 		Data: m.Message(),
 	}
