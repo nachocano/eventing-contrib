@@ -97,7 +97,7 @@ func (r *reconciler) Reconcile(ctx context.Context, object runtime.Object) error
 func (r *reconciler) reconcile(ctx context.Context, crd *v1beta1.CustomResourceDefinition) error {
 	logger := logging.FromContext(ctx)
 
-	// TODO try to not be even called in this case.
+	// TODO try to not be called in this case.
 	if crd.Labels[eventtype.EventingSourceLabelKey] != eventtype.EventingSourceLabelValue {
 		logger.Debugf("Not reconciling CRD %q", crd.Name)
 		return nil

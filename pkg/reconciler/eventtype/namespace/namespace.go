@@ -41,7 +41,7 @@ const (
 	controllerAgentName = "knative-sources-namespace-controller"
 )
 
-// Add creates a new CRD Controller and adds it to the
+// Add creates a new Namespace Controller and adds it to the
 // Manager with default RBAC. The Manager will set fields on the
 // Controller and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
@@ -93,7 +93,7 @@ func (r *reconciler) Reconcile(ctx context.Context, object runtime.Object) error
 func (r *reconciler) reconcile(ctx context.Context, namespace *corev1.Namespace) error {
 	logger := logging.FromContext(ctx)
 
-	// TODO try to not be even called in this case.
+	// TODO try to not be called in this case.
 	if namespace.Labels[eventtype.KnativeEventingLabelKey] != eventtype.KnativeEventingLabelValue {
 		logger.Debugf("Not reconciling namespace %q", namespace.Name)
 		return nil

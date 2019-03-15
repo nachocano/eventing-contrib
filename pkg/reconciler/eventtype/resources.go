@@ -157,6 +157,7 @@ func makeEventType(crd *v1beta1.CustomResourceDefinition, namespace corev1.Names
 		},
 		Spec: eventingv1alpha1.EventTypeSpec{
 			Type: eventType,
+			// TODO might be better the singular: crd.Spec.Names.Singular
 			From: crd.Name,
 			// TODO schema in the CRD?
 			Schema: "",
