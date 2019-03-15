@@ -19,6 +19,7 @@ package eventtype
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
 
 	eventingv1alpha1 "github.com/knative/eventing/pkg/apis/eventing/v1alpha1"
@@ -171,23 +172,23 @@ func makeEventType(crd *v1beta1.CustomResourceDefinition, namespace corev1.Names
 }
 
 func difference(current []eventingv1alpha1.EventType, expected []eventingv1alpha1.EventType) []eventingv1alpha1.EventType {
-	// TODO make a more efficient implementation (O(n) instead of O(n^2))
 	difference := make([]eventingv1alpha1.EventType, 0)
+	currentSet := asSet(current)
 	for _, e := range expected {
-		found := false
-		for _, c := range current {
-			if e.Spec.Type == c.Spec.Type &&
-				e.Spec.From == c.Spec.From &&
-				e.Spec.Schema == c.Spec.Schema {
-				found = true
-				break
-			}
-		}
-		if !found {
+		item := fmt.Sprintf("%s_%s_%s", e.Spec.Type, e.Spec.From, e.Spec.Schema)
+		if !currentSet.Has(item) {
 			difference = append(difference, e)
 		}
 	}
 	return difference
+}
+
+func asSet(eventTypes []eventingv1alpha1.EventType) sets.String {
+	set := sets.String{}
+	for _, eventType := range eventTypes {
+		set.Insert(fmt.Sprintf("%s_%s_%s", eventType.Spec.Type, eventType.Spec.From, eventType.Spec.Schema))
+	}
+	return set
 }
 
 func toValidIdentifier(eventType string) string {
