@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Knative Authors
+Copyright 2018 The Knative Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,5 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package eventtype implements the controllers needed for auto-creation of Event Types.
-package eventtype
+package controller
+
+import (
+	"github.com/knative/eventing-sources/pkg/reconciler/namespace"
+)
+
+func init() {
+	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
+	AddToManagerFuncs = append(AddToManagerFuncs, namespace.Add)
+}
