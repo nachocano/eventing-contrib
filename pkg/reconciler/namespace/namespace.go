@@ -66,7 +66,7 @@ const (
 )
 
 var (
-	// TODO make these constants and accessible from different places (e.g., adaptors)
+	// TODO this should be removed once we agree on CRD fields.
 	// This is needed because these sources do not explicitly define the eventTypes they
 	// can produce in their CRDs. We may need to try to "standarize" CRDs specs for sources.
 	// Question: Why are we changing the eventType for some but not all sources?
@@ -80,6 +80,8 @@ var (
 		"gcppubsubsources.sources.eventing.knative.dev": "google.pubsub.topic.publish",
 		// What about container sources eventTypes?
 		"containersources.sources.eventing.knative.dev": "dev.knative.container.event",
+		// What about camel?
+		"camelsources.sources.eventing.knative.dev": "dev.knative.source.camel.event",
 	}
 )
 
