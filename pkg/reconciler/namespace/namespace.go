@@ -21,9 +21,10 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -97,6 +98,7 @@ func Add(mgr manager.Manager) error {
 	p := &sdk.Provider{
 		AgentName: controllerAgentName,
 		Parent:    &corev1.Namespace{},
+		// TODO watch for EventTypes that were created here?
 		Mappers: map[runtime.Object]handler.Mapper{
 			&v1beta1.CustomResourceDefinition{}: &mapSourceCrdToEventingNamespaces{r: r}},
 		Reconciler: r,
@@ -129,32 +131,28 @@ func (m *mapSourceCrdToEventingNamespaces) Map(o handler.MapObject) []reconcile.
 		return eventingNamespaces
 	}
 
-	opts := &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(namespaceLabels()),
-		// Set Raw because if we need to get more than one page, then we will put the continue token
-		// into opts.Raw.Continue.
-		Raw: &metav1.ListOptions{},
+	accessor, err := meta.Accessor(crd)
+	if err != nil {
+		return eventingNamespaces
 	}
-	for {
-		nl := &corev1.NamespaceList{}
-		if err := m.r.client.List(ctx, opts, nl); err != nil {
-			return eventingNamespaces
-		}
 
-		for _, n := range nl.Items {
+	namespaces := m.r.getEventingNamespaces(ctx, crd)
+
+	// If the CRD was not deleted, then reconcile all the eventing namespaces.
+	if accessor.GetDeletionTimestamp() == nil {
+		for _, namespace := range namespaces {
 			eventingNamespaces = append(eventingNamespaces, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      n.Name,
-					Namespace: n.Namespace,
+					Name:      namespace.Name,
+					Namespace: namespace.Namespace,
 				},
 			})
-			if nl.Continue != "" {
-				opts.Raw.Continue = nl.Continue
-			} else {
-				return eventingNamespaces
-			}
 		}
+		// If the CRD was deleted, remove the event types it created.
+	} else {
+		m.r.finalize(ctx, crd, namespaces)
 	}
+	return eventingNamespaces
 }
 
 func (r *reconciler) Reconcile(ctx context.Context, object runtime.Object) error {
@@ -212,7 +210,7 @@ func (r *reconciler) reconcileNamespace(ctx context.Context, namespace *corev1.N
 	}
 
 	for _, crd := range sourcesCrds {
-		err := r.reconcileEventTypes(ctx, crd, namespace)
+		err := r.reconcileEventTypes(ctx, &crd, namespace)
 		if err != nil {
 			logger.Errorf("Error reconciling EventTypes from CRD %q for namespace %q", crd.Name, namespace.Name)
 			return err
@@ -222,7 +220,7 @@ func (r *reconciler) reconcileNamespace(ctx context.Context, namespace *corev1.N
 	return nil
 }
 
-func (r *reconciler) reconcileEventTypes(ctx context.Context, crd v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) error {
+func (r *reconciler) reconcileEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) error {
 	current, err := r.getEventTypes(ctx, crd, namespace)
 	if err != nil {
 		return err
@@ -243,7 +241,7 @@ func (r *reconciler) reconcileEventTypes(ctx context.Context, crd v1beta1.Custom
 	return nil
 }
 
-func (r *reconciler) getEventTypes(ctx context.Context, crd v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) ([]eventingv1alpha1.EventType, error) {
+func (r *reconciler) getEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) ([]eventingv1alpha1.EventType, error) {
 	eventTypes := make([]eventingv1alpha1.EventType, 0)
 
 	opts := &client.ListOptions{
@@ -270,7 +268,7 @@ func (r *reconciler) getEventTypes(ctx context.Context, crd v1beta1.CustomResour
 	}
 }
 
-func (r *reconciler) newEventTypes(crd v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) []eventingv1alpha1.EventType {
+func (r *reconciler) newEventTypes(crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) []eventingv1alpha1.EventType {
 	eventTypes := make([]eventingv1alpha1.EventType, 0)
 	if crd.Spec.Validation != nil && crd.Spec.Validation.OpenAPIV3Schema != nil {
 		properties := crd.Spec.Validation.OpenAPIV3Schema.Properties
@@ -322,6 +320,62 @@ func (r *reconciler) getSourcesCrds(ctx context.Context) ([]v1beta1.CustomResour
 			return sourcesCrds, nil
 		}
 	}
+}
+
+func (r *reconciler) getEventingNamespaces(ctx context.Context, crd *v1beta1.CustomResourceDefinition) []corev1.Namespace {
+	eventingNamespaces := make([]corev1.Namespace, 0)
+
+	opts := &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(namespaceLabels()),
+		// Set Raw because if we need to get more than one page, then we will put the continue token
+		// into opts.Raw.Continue.
+		Raw: &metav1.ListOptions{},
+	}
+	for {
+		nl := &corev1.NamespaceList{}
+		if err := r.client.List(ctx, opts, nl); err != nil {
+			return eventingNamespaces
+		}
+
+		for _, e := range nl.Items {
+			eventingNamespaces = append(eventingNamespaces, e)
+		}
+		if nl.Continue != "" {
+			opts.Raw.Continue = nl.Continue
+		} else {
+			return eventingNamespaces
+		}
+	}
+}
+
+func (r *reconciler) finalize(ctx context.Context, crd *v1beta1.CustomResourceDefinition, eventingNamespaces []corev1.Namespace) error {
+	logger := logging.FromContext(ctx)
+	for _, eventingNamespace := range eventingNamespaces {
+		err := r.deleteEventTypes(ctx, crd, &eventingNamespace)
+		if err != nil {
+			logger.Errorf("Error deleting EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
+			return err
+		}
+		logger.Infof("Deleted EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
+	}
+	return nil
+}
+
+func (r *reconciler) deleteEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) error {
+	current, err := r.getEventTypes(ctx, crd, namespace)
+	if err != nil {
+		return err
+	}
+	if len(current) > 0 {
+		// TODO bulk deletion?
+		for _, eventType := range current {
+			err = r.client.Delete(ctx, &eventType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func sourceLabels() map[string]string {

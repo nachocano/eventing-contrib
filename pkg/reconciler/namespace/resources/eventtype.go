@@ -38,7 +38,7 @@ var (
 	validChars = regexp.MustCompile(`[^-\.a-z0-9]+`)
 )
 
-func MakeEventType(crd v1beta1.CustomResourceDefinition, namespace *corev1.Namespace, eventType string) eventingv1alpha1.EventType {
+func MakeEventType(crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace, eventType string) eventingv1alpha1.EventType {
 	return eventingv1alpha1.EventType{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-", toValidIdentifier(eventType)),
