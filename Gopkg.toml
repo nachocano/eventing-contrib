@@ -98,6 +98,10 @@ required = [
   name = "github.com/cloudevents/sdk-go"
   version = "0.4.0"
 
+[[constraint]]
+  name = "github.com/apache/camel-k"
+  version = "0.2.0"
+
 # Dependency on Registry
 [[constraint]]
   name = "github.com/knative/eventing"

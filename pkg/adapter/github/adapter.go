@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
 
 	"github.com/cloudevents/sdk-go/pkg/cloudevents"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
@@ -38,13 +37,21 @@ const (
 	eventFromValue   = "githubsource"
 )
 
-// Adapter converts incoming GitHub webhook events to CloudEvents and
-// then sends them to the specified Sink
+// Adapter converts incoming GitHub webhook events to CloudEvents
 type Adapter struct {
-	SinkURI string
-	client  client.Client
+	client client.Client
+}
 
-	initClientOnce sync.Once
+// New creates an adapter to convert incoming GitHub webhook events to CloudEvents and
+// then sends them to the specified Sink
+func New(sinkURI string) (*Adapter, error) {
+	a := new(Adapter)
+	var err error
+	a.client, err = kncloudevents.NewDefaultClient(sinkURI)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 
 // HandleEvent is invoked whenever an event comes in from GitHub
@@ -57,14 +64,6 @@ func (a *Adapter) HandleEvent(payload interface{}, header webhooks.Header) {
 }
 
 func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
-	var err error
-	a.initClientOnce.Do(func() {
-		a.client, err = kncloudevents.NewDefaultClient(a.SinkURI)
-	})
-	if a.client == nil {
-		return fmt.Errorf("failed to create cloudevent client: %s", err)
-	}
-
 	gitHubEventType := hdr.Get("X-" + GHHeaderEvent)
 	eventID := hdr.Get("X-" + GHHeaderDelivery)
 	extensions := map[string]interface{}{
