@@ -139,6 +139,7 @@ func (m *mapSourceCrdToEventingNamespaces) Map(o handler.MapObject) []reconcile.
 	namespaces := m.r.getEventingNamespaces(ctx, crd)
 
 	// If the CRD was not deleted, then reconcile all the eventing namespaces.
+	// We create reconcile.Requests for each of them.
 	if accessor.GetDeletionTimestamp() == nil {
 		for _, namespace := range namespaces {
 			eventingNamespaces = append(eventingNamespaces, reconcile.Request{
@@ -148,9 +149,9 @@ func (m *mapSourceCrdToEventingNamespaces) Map(o handler.MapObject) []reconcile.
 				},
 			})
 		}
-		// If the CRD was deleted, remove the event types it created.
+		// If the CRD was deleted, then we remove the event types it created.
 	} else {
-		m.r.finalize(ctx, crd, namespaces)
+		m.r.deleteEventTypes(ctx, crd, namespaces)
 	}
 	return eventingNamespaces
 }
@@ -348,10 +349,10 @@ func (r *reconciler) getEventingNamespaces(ctx context.Context, crd *v1beta1.Cus
 	}
 }
 
-func (r *reconciler) finalize(ctx context.Context, crd *v1beta1.CustomResourceDefinition, eventingNamespaces []corev1.Namespace) error {
+func (r *reconciler) deleteEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, eventingNamespaces []corev1.Namespace) error {
 	logger := logging.FromContext(ctx)
 	for _, eventingNamespace := range eventingNamespaces {
-		err := r.deleteEventTypes(ctx, crd, &eventingNamespace)
+		err := r.deleteEventTypesForNamespace(ctx, crd, &eventingNamespace)
 		if err != nil {
 			logger.Errorf("Error deleting EventTypes from CRD %q for namespace %q", crd.Name, eventingNamespace.Name)
 			return err
@@ -361,7 +362,7 @@ func (r *reconciler) finalize(ctx context.Context, crd *v1beta1.CustomResourceDe
 	return nil
 }
 
-func (r *reconciler) deleteEventTypes(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) error {
+func (r *reconciler) deleteEventTypesForNamespace(ctx context.Context, crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace) error {
 	current, err := r.getEventTypes(ctx, crd, namespace)
 	if err != nil {
 		return err

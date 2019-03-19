@@ -109,7 +109,6 @@ var bitBucketSourceCondSet = duckv1alpha1.NewLivingConditionSet(
 	BitBucketSourceConditionSecretsProvided,
 	BitBucketSourceConditionSinkProvided,
 	BitBucketSourceConditionServiceProvided,
-	BitBucketSourceConditionWebHookUUIDProvided,
 	BitBucketSourceConditionWebHookUUIDProvided)
 
 // BitBucketSourceStatus defines the observed state of BitBucketSource.
