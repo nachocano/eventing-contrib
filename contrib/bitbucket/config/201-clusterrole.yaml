@@ -52,6 +52,11 @@ rules:
       - list
       - watch
   - apiGroups:
+      - eventing.knative.dev
+    resources:
+      - eventtypes
+    verbs: *everything
+  - apiGroups:
       - serving.knative.dev
     resources:
       - services

@@ -21,9 +21,8 @@ import (
 	"regexp"
 	"strings"
 
+	sourcesv1alpha1 "github.com/knative/eventing-sources/contrib/bitbucket/pkg/apis/sources/v1alpha1"
 	eventingv1alpha1 "github.com/knative/eventing/pkg/apis/eventing/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -38,18 +37,20 @@ var (
 	validChars = regexp.MustCompile(`[^-\.a-z0-9]+`)
 )
 
-func MakeEventType(crd *v1beta1.CustomResourceDefinition, namespace *corev1.Namespace, eventType string) eventingv1alpha1.EventType {
+func MakeEventType(source *sourcesv1alpha1.BitBucketSource, eventType string) eventingv1alpha1.EventType {
 	return eventingv1alpha1.EventType{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-", toValidIdentifier(eventType)),
-			Labels:       eventTypeLabels(crd.Name),
-			Namespace:    namespace.Name,
+			Labels:       eventTypeLabels(source.Name),
+			Namespace:    source.Namespace,
 		},
 		Spec: eventingv1alpha1.EventTypeSpec{
 			Type: eventType,
-			From: strings.ToLower(crd.Spec.Names.Kind),
-			// TODO should have schema in the CRD?
+			// TODO should standarize how to define these ones.
+			Source: source.Spec.OwnerAndRepository,
 			Schema: "",
+			// TODO check the Kind?
+			Broker: source.Spec.Sink.Name,
 		},
 	}
 }

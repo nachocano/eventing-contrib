@@ -394,7 +394,7 @@
 
 [[projects]]
   branch = "registry-namespace"
-  digest = "1:997d1d563e7a53697e8afc0e1aeff88458753c48ac0a9b0bef0512fc2f1fb249"
+  digest = "1:ea4763feaf29111d0b3ae05c8bd116817e6537cacce58303e75beaddba4da039"
   name = "github.com/knative/eventing"
   packages = [
     "pkg/apis/duck/v1alpha1",
@@ -405,7 +405,7 @@
     "pkg/client/clientset/versioned/typed/eventing/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "f0a86d0e1b62cd0bbadb6e086914a7fe74f2c9f9"
+  revision = "b99266b834063533bd5df5ae4b11b9d91e729bf2"
   source = "github.com/nachocano/eventing"
 
 [[projects]]
