@@ -20,8 +20,6 @@ package v1alpha1
 
 type AwsSqsSourceExpansion interface{}
 
-type BitBucketSourceExpansion interface{}
-
 type ContainerSourceExpansion interface{}
 
 type CronJobSourceExpansion interface{}
