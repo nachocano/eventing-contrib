@@ -49,47 +49,30 @@ var _ runtime.Object = (*EventType)(nil)
 var _ webhook.GenericCRD = (*EventType)(nil)
 
 type EventTypeSpec struct {
-	// TODO By enabling the status subresource metadata.generation should increment
-	// thus making this property obsolete.
-	//
-	// We should be able to drop this property with a CRD conversion webhook
-	// in the future
-	//
-	// +optional
-	DeprecatedGeneration int64 `json:"generation,omitempty"`
-
-	// TODO these attributes may need to be updated once we agree on the object model.
 	Type string `json:"type,omitempty"`
 	// +optional
 	Source string `json:"source,omitempty"`
 	// +optional
 	Schema string `json:"schema,omitempty"`
-	// TODO sink or broker?
+
 	Broker string `json:"broker,omitempty"`
 }
 
-var eventTypeCondSet = duckv1alpha1.NewLivingConditionSet(EventTypeConditionReady)
-
 // EventTypeStatus represents the current state of a EventType.
 type EventTypeStatus struct {
-	// ObservedGeneration is the most recent generation observed for this EventType.
-	// It corresponds to the Broker's generation, which is updated on mutation by
-	// the API Server.
-	// TODO: The above comment is only true once
-	// https://github.com/kubernetes/kubernetes/issues/58778 is fixed.
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// Represents the latest available observations of a event type's current state.
-	// +optional
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	Conditions duckv1alpha1.Conditions `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	// inherits duck/v1alpha1 Status, which currently provides:
+	// * ObservedGeneration - the 'Generation' of the Service that was last processed by the controller.
+	// * Conditions - the latest available observations of a resource's current state.
+	duckv1alpha1.Status `json:",inline"`
 }
 
 const (
-	EventTypeConditionReady = duckv1alpha1.ConditionReady
+	EventTypeConditionReady                                   = duckv1alpha1.ConditionReady
+	EventTypeConditionBrokerExists duckv1alpha1.ConditionType = "BrokerExists"
+	EventTypeConditionBrokerReady  duckv1alpha1.ConditionType = "BrokerReady"
 )
+
+var eventTypeCondSet = duckv1alpha1.NewLivingConditionSet(EventTypeConditionBrokerExists, EventTypeConditionBrokerReady)
 
 // GetCondition returns the condition currently associated with the given type, or nil.
 func (et *EventTypeStatus) GetCondition(t duckv1alpha1.ConditionType) *duckv1alpha1.Condition {
@@ -106,8 +89,20 @@ func (et *EventTypeStatus) InitializeConditions() {
 	eventTypeCondSet.Manage(et).InitializeConditions()
 }
 
-func (rs *EventTypeStatus) MarkEventTypeReady() {
-	eventTypeCondSet.Manage(rs).MarkTrue(EventTypeConditionReady)
+func (et *EventTypeStatus) MarkBrokerExists() {
+	eventTypeCondSet.Manage(et).MarkTrue(EventTypeConditionBrokerExists)
+}
+
+func (et *EventTypeStatus) MarkBrokerDoesNotExist() {
+	eventTypeCondSet.Manage(et).MarkFalse(EventTypeConditionBrokerExists, "BrokerDoesNotExist", "Broker does not exist")
+}
+
+func (et *EventTypeStatus) MarkBrokerReady() {
+	eventTypeCondSet.Manage(et).MarkTrue(EventTypeConditionBrokerReady)
+}
+
+func (et *EventTypeStatus) MarkBrokerNotReady() {
+	eventTypeCondSet.Manage(et).MarkFalse(EventTypeConditionBrokerReady, "BrokerNotReady", "Broker is not ready")
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

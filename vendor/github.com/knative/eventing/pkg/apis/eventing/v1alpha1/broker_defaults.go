@@ -16,10 +16,17 @@ limitations under the License.
 
 package v1alpha1
 
-func (b *Broker) SetDefaults() {
-	b.Spec.SetDefaults()
+import "context"
+
+func (b *Broker) SetDefaults(ctx context.Context) {
+	b.Spec.SetDefaults(ctx)
 }
 
-func (bs *BrokerSpec) SetDefaults() {
-	// None
+func (bs *BrokerSpec) SetDefaults(ctx context.Context) {
+	if bs.IngressPolicy == nil {
+		bs.IngressPolicy = &IngressPolicySpec{
+			AllowAny: true,
+			AutoAdd:  false,
+		}
+	}
 }

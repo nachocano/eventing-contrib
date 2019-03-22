@@ -16,10 +16,14 @@ limitations under the License.
 
 package v1alpha1
 
-func (et *EventType) SetDefaults() {
-	et.Spec.SetDefaults(et.Name)
+import "context"
+
+func (et *EventType) SetDefaults(ctx context.Context) {
+	et.Spec.SetDefaults(ctx)
 }
 
-func (ets *EventTypeSpec) SetDefaults(eventTypeName string) {
-	// TODO anything?
+func (ets *EventTypeSpec) SetDefaults(ctx context.Context) {
+	if ets.Broker == "" {
+		ets.Broker = "default"
+	}
 }

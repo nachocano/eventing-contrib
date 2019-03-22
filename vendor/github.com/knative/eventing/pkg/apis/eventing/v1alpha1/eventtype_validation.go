@@ -17,20 +17,30 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/knative/pkg/apis"
 )
 
-func (et *EventType) Validate() *apis.FieldError {
-	return et.Spec.Validate().ViaField("spec")
+func (et *EventType) Validate(ctx context.Context) *apis.FieldError {
+	return et.Spec.Validate(ctx).ViaField("spec")
 }
 
-func (et *EventTypeSpec) Validate() *apis.FieldError {
+func (ets *EventTypeSpec) Validate(ctx context.Context) *apis.FieldError {
 	var errs *apis.FieldError
+	if ets.Type == "" {
+		fe := apis.ErrMissingField("type")
+		errs = errs.Also(fe)
+	}
+	if ets.Broker == "" {
+		fe := apis.ErrMissingField("broker")
+		errs = errs.Also(fe)
+	}
 	return errs
 }
 
-func (r *EventType) CheckImmutableFields(og apis.Immutable) *apis.FieldError {
+func (et *EventType) CheckImmutableFields(ctx context.Context, og apis.Immutable) *apis.FieldError {
 	if og == nil {
 		return nil
 	}
@@ -40,13 +50,14 @@ func (r *EventType) CheckImmutableFields(og apis.Immutable) *apis.FieldError {
 		return &apis.FieldError{Message: "The provided original was not an EventType"}
 	}
 
-	// TODO check other fields.
-	if diff := cmp.Diff(original.Spec.Type, r.Spec.Type); diff != "" {
+	// All fields immutable, otherwise it creates a problem when reconciling from sources.
+	if diff := cmp.Diff(original.Spec, et.Spec); diff != "" {
 		return &apis.FieldError{
 			Message: "Immutable fields changed (-old +new)",
-			Paths:   []string{"spec", "events"},
+			Paths:   []string{"spec"},
 			Details: diff,
 		}
 	}
+
 	return nil
 }
