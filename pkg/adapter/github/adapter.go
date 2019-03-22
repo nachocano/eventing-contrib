@@ -25,16 +25,15 @@ import (
 	"github.com/cloudevents/sdk-go/pkg/cloudevents"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/types"
+	sourcesv1alpha1 "github.com/knative/eventing-sources/pkg/apis/sources/v1alpha1"
 	"github.com/knative/eventing-sources/pkg/kncloudevents"
-	"gopkg.in/go-playground/webhooks.v3"
+	webhooks "gopkg.in/go-playground/webhooks.v3"
 	gh "gopkg.in/go-playground/webhooks.v3/github"
 )
 
 const (
 	GHHeaderEvent    = "GitHub-Event"
 	GHHeaderDelivery = "GitHub-Delivery"
-	eventFromKey     = "Event-From"
-	eventFromValue   = "githubsource"
 )
 
 // Adapter converts incoming GitHub webhook events to CloudEvents
@@ -69,13 +68,11 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	extensions := map[string]interface{}{
 		GHHeaderEvent:    gitHubEventType,
 		GHHeaderDelivery: eventID,
-		eventFromKey:     eventFromValue,
 	}
 
 	log.Printf("Handling %s", gitHubEventType)
 
-	// Not changing the type.
-	// cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.GitHubSourceEventPrefix, gitHubEventType)
+	cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.GitHubSourceEventPrefix, gitHubEventType)
 	source, err := sourceFromGitHubEvent(gh.Event(gitHubEventType), payload)
 	if err != nil {
 		return err
@@ -84,7 +81,7 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
 			ID:         eventID,
-			Type:       gitHubEventType,
+			Type:       cloudEventType,
 			Source:     *source,
 			Extensions: extensions,
 		}.AsV02(),

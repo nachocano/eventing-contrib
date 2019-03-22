@@ -33,9 +33,7 @@ import (
 )
 
 const (
-	eventType      = "dev.knative.cronjob.event"
-	eventFromKey   = "Event-From"
-	eventFromValue = "cronjobsource"
+	eventType = "dev.knative.cronjob.event"
 )
 
 // Adapter implements the Cron Job adapter to trigger a Sink.
@@ -90,15 +88,10 @@ func (a *Adapter) Start(ctx context.Context, stopCh <-chan struct{}) error {
 func (a *Adapter) cronTick() {
 	logger := logging.FromContext(context.TODO())
 
-	extensions := map[string]interface{}{
-		eventFromKey: eventFromValue,
-	}
-
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
-			Type:       eventType,
-			Source:     *types.ParseURLRef("/CronJob"),
-			Extensions: extensions,
+			Type:   eventType,
+			Source: *types.ParseURLRef("/CronJob"),
 		}.AsV02(),
 		Data: message(a.Data),
 	}

@@ -36,14 +36,13 @@ import (
 )
 
 const (
-	eventType      = "aws.sqs.message"
-	eventFromKey   = "Event-From"
-	eventFromValue = "awssqssource"
+	eventType = "aws.sqs.message"
 )
 
 // Adapter implements the AWS SQS adapter to deliver SQS messages from
 // an SQS queue to a Sink.
 type Adapter struct {
+
 	// QueueURL is the AWS SQS URL that we're polling messages from
 	QueueURL string
 
@@ -181,18 +180,12 @@ func (a *Adapter) postMessage(ctx context.Context, logger *zap.SugaredLogger, m 
 		logger.Errorw("Failed to unmarshal the message.", zap.Error(err), zap.Any("message", m.Body))
 		timestamp = time.Now().UnixNano()
 	}
-
-	extensions := map[string]interface{}{
-		eventFromKey: eventFromValue,
-	}
-
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
-			ID:         *m.MessageId,
-			Type:       eventType,
-			Source:     *types.ParseURLRef(a.QueueURL),
-			Time:       &types.Timestamp{Time: time.Unix(timestamp, 0)},
-			Extensions: extensions,
+			ID:     *m.MessageId,
+			Type:   eventType,
+			Source: *types.ParseURLRef(a.QueueURL),
+			Time:   &types.Timestamp{Time: time.Unix(timestamp, 0)},
 		}.AsV02(),
 		Data: m,
 	}
