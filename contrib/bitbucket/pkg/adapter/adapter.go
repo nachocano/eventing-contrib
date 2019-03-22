@@ -29,15 +29,14 @@ import (
 
 	"github.com/cloudevents/sdk-go/pkg/cloudevents"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
+	sourcesv1alpha1 "github.com/knative/eventing-sources/contrib/bitbucket/pkg/apis/sources/v1alpha1"
 	"gopkg.in/go-playground/webhooks.v3"
 	bb "gopkg.in/go-playground/webhooks.v3/bitbucket"
 )
 
 const (
-	bbRequestUUID    = "Request-UUID"
-	bbEventKey       = "Event-Key"
-	bbEventFromKey   = "Event-From"
-	bbEventFromValue = "bitbucketsource"
+	bbRequestUUID = "Request-UUID"
+	bbEventKey    = "Event-Key"
 )
 
 // Adapter converts incoming BitBucket webhook events to CloudEvents and
@@ -70,15 +69,13 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	bitBucketEventType := hdr.Get("X-" + bbEventKey)
 	eventID := hdr.Get("X-" + bbRequestUUID)
 	extensions := map[string]interface{}{
-		bbEventKey:     bitBucketEventType,
-		bbRequestUUID:  eventID,
-		bbEventFromKey: bbEventFromValue,
+		bbEventKey:    bitBucketEventType,
+		bbRequestUUID: eventID,
 	}
 
 	log.Printf("Handling %s", bitBucketEventType)
 
-	// Not changing the type.
-	// cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, bitBucketEventType)
+	cloudEventType := fmt.Sprintf("%s.%s", sourcesv1alpha1.BitBucketSourceEventPrefix, bitBucketEventType)
 	source, err := sourceFromBitBucketEvent(bb.Event(bitBucketEventType), payload)
 	if err != nil {
 		return err
@@ -87,7 +84,7 @@ func (a *Adapter) handleEvent(payload interface{}, hdr http.Header) error {
 	event := cloudevents.Event{
 		Context: cloudevents.EventContextV02{
 			ID:         eventID,
-			Type:       bitBucketEventType,
+			Type:       cloudEventType,
 			Source:     *source,
 			Extensions: extensions,
 		}.AsV02(),
