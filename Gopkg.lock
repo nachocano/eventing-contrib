@@ -393,7 +393,6 @@
   version = "v0.2.0"
 
 [[projects]]
-  branch = "registry-namespace"
   digest = "1:f4f17749e2f275de1f21f13e9a29d5b274cef303eacb980ba10d4a16aaaab85b"
   name = "github.com/knative/eventing"
   packages = [
@@ -405,7 +404,7 @@
     "pkg/client/clientset/versioned/typed/eventing/v1alpha1",
   ]
   pruneopts = "NUT"
-  revision = "7782715dcf576cc41068a406a96a695f10fdf0dc"
+  revision = "3b6ed5d3b5e0a1ddaffcd6756a8d2e9338685a77"
   source = "github.com/nachocano/eventing"
 
 [[projects]]
