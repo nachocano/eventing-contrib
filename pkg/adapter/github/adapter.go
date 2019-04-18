@@ -137,6 +137,8 @@ func subjectFromGitHubEvent(gitHubEvent gh.Event, payload interface{}) string {
 		}
 	case gh.GollumEvent:
 		if g, ok := payload.(gh.GollumPayload); ok {
+			// The pages that were updated.
+			// E.g., Home
 			pages := make([]string, 0, len(g.Pages))
 			for _, page := range g.Pages {
 				pages = append(pages, page.PageName)
@@ -225,6 +227,10 @@ func subjectFromGitHubEvent(gitHubEvent gh.Event, payload interface{}) string {
 		}
 	case gh.PushEvent:
 		if p, ok := payload.(gh.PushPayload); ok {
+			// This is the last portion of the URL we where retrieving.
+			// E.g., https://github.com/Codertocat/Hello-World/compare/a10867b14bb7...000000000000
+			// and we keep with a10867b14bb7...000000000000. No need to parse the URL as the info is
+			// in available in separate fields.
 			subject = fmt.Sprintf("%s...%s", p.Before, p.After)
 		}
 	case gh.ReleaseEvent:
