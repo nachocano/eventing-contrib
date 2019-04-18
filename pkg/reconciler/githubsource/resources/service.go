@@ -41,6 +41,10 @@ func MakeService(source *sourcesv1alpha1.GitHubSource, receiveAdapterImage strin
 			},
 		},
 		{
+			Name:  "GITHUB_OWNER_REPO",
+			Value: source.Spec.OwnerAndRepository,
+		},
+		{
 			Name:  "SINK",
 			Value: sinkURI,
 		},
