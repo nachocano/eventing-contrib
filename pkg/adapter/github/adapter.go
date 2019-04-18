@@ -51,7 +51,10 @@ func New(sinkURI, ownerRepo string) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	// set the CloudEvent source.
+	// Set the CloudEvent source. This will be the same for all CloudEvents emitted
+	// from this adapter. This is needed to simplify the instantiation of EventTypes
+	// in the GitHubSource controller.
+	// What we generate dynamically is the CloudEvent subject.
 	a.source = types.ParseURLRef(fmt.Sprintf("/%s", ownerRepo))
 	if a.source == nil {
 		return nil, fmt.Errorf("invalid source %q", ownerRepo)

@@ -122,5 +122,6 @@ func main() {
 
 		ra.HandleEvent(event, r.Header)
 	})
-	http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
+	addr := fmt.Sprintf(":%s", port)
+	http.ListenAndServe(addr, nil)
 }
