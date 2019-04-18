@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -121,5 +122,5 @@ func main() {
 
 		ra.HandleEvent(event, r.Header)
 	})
-	http.ListenAndServe(port, nil)
+	http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
 }

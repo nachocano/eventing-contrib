@@ -52,11 +52,10 @@ func New(sinkURI, ownerRepo string) (*Adapter, error) {
 		return nil, err
 	}
 	// set the CloudEvent source.
-	source := types.ParseURLRef(fmt.Sprintf("/%s", ownerRepo))
-	if source == nil {
+	a.source = types.ParseURLRef(fmt.Sprintf("/%s", ownerRepo))
+	if a.source == nil {
 		return nil, fmt.Errorf("invalid source %q", ownerRepo)
 	}
-	a.source = source
 	return a, nil
 }
 
