@@ -11,12 +11,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package reconciler
+package eventtype
 
 import (
 	"context"
 	"fmt"
+	"github.com/knative/eventing-sources/contrib/gcppubsub/pkg/apis/sources/v1alpha1"
+	"github.com/knative/eventing-sources/pkg/controller/sdk"
+	"go.uber.org/zap"
 	"regexp"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"strings"
 
 	eventingv1alpha1 "github.com/knative/eventing/pkg/apis/eventing/v1alpha1"
@@ -37,10 +41,34 @@ const (
 // Only allow alphanumeric, '-' or '.'.
 var validChars = regexp.MustCompile(`[^-\.a-z0-9]+`)
 
+type EventTypeProvider interface {
+	ProvideReconcilerArgs(runtime.Object) *EventTypeReconcilerArgs
+	MarkEventTypes(runtime.Object) error
+	sdk.KnativeReconciler
+}
+
 // EventTypeReconciler is a helper struct that can be used by any source in order to reconcile its EventTypes.
 type EventTypeReconciler struct {
-	Client client.Client
-	Scheme *runtime.Scheme
+	client       client.Client
+	AgentName    string
+	Parent       runtime.Object
+	Owns         []runtime.Object
+	TypeProvider EventTypeProvider
+}
+
+func (r *EventTypeReconciler) Add(mgr manager.Manager, logger *zap.SugaredLogger) error {
+	p := &sdk.Provider{
+		AgentName:  r.AgentName,
+		Parent:     r.Parent,
+		Owns:       r.Owns,
+		Reconciler: r.TypeProvider,
+	}
+	return p.Add(mgr, logger)
+}
+
+func (r *EventTypeReconciler) InjectClient(c client.Client) error {
+	r.client = c
+	return nil
 }
 
 // EventTypeReconcilerArgs are the arguments needed to reconcile EventTypes.
@@ -48,6 +76,10 @@ type EventTypeReconcilerArgs struct {
 	EventTypeSpecs []eventingv1alpha1.EventTypeSpec
 	Namespace      string
 	Labels         map[string]string
+}
+
+func Reconcile(ctx context.Context, object runtime.Object) error {
+	return nil
 }
 
 // ReconcileEventTypes reconciles the EventTypes taken from 'args', and sets 'owner' as the controller.

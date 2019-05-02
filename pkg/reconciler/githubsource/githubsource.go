@@ -26,7 +26,7 @@ import (
 	sourcesv1alpha1 "github.com/knative/eventing-sources/pkg/apis/sources/v1alpha1"
 	"github.com/knative/eventing-sources/pkg/controller/sdk"
 	"github.com/knative/eventing-sources/pkg/controller/sinks"
-	. "github.com/knative/eventing-sources/pkg/reconciler"
+	"github.com/knative/eventing-sources/pkg/reconciler/eventtype"
 	"github.com/knative/eventing-sources/pkg/reconciler/githubsource/resources"
 	eventingv1alpha1 "github.com/knative/eventing/pkg/apis/eventing/v1alpha1"
 	"github.com/knative/pkg/logging"
@@ -63,22 +63,25 @@ func Add(mgr manager.Manager, logger *zap.SugaredLogger) error {
 	}
 
 	log.Println("Adding the GitHub Source controller.")
-	p := &sdk.Provider{
+
+	//p := &sdk.Provider{
+	//	AgentName: controllerAgentName,
+	//	Parent:    &sourcesv1alpha1.GitHubSource{},
+	//	Owns:      []runtime.Object{&servingv1alpha1.Service{}, &eventingv1alpha1.EventType{}},
+	//	Reconciler: r,
+	//}
+	eventTypeReconciler := eventtype.EventTypeReconciler{
 		AgentName: controllerAgentName,
 		Parent:    &sourcesv1alpha1.GitHubSource{},
 		Owns:      []runtime.Object{&servingv1alpha1.Service{}, &eventingv1alpha1.EventType{}},
-		Reconciler: &reconciler{
+		TypeProvider: &reconciler{
 			recorder:            mgr.GetRecorder(controllerAgentName),
 			scheme:              mgr.GetScheme(),
 			receiveAdapterImage: receiveAdapterImage,
 			webhookClient:       gitHubWebhookClient{},
-			eventTypeReconciler: EventTypeReconciler{
-				Scheme: mgr.GetScheme(),
-			},
 		},
 	}
-
-	return p.Add(mgr, logger)
+	return eventTypeReconciler.Add(mgr, logger)
 }
 
 // reconciler reconciles a GitHubSource object
@@ -88,7 +91,7 @@ type reconciler struct {
 	recorder            record.EventRecorder
 	receiveAdapterImage string
 	webhookClient       webhookClient
-	eventTypeReconciler EventTypeReconciler
+	eventTypeReconciler eventtype.EventTypeReconciler
 }
 
 type webhookArgs struct {
@@ -348,11 +351,11 @@ func (r *reconciler) getOwnedService(ctx context.Context, source *sourcesv1alpha
 }
 
 func (r *reconciler) reconcileEventTypes(ctx context.Context, source *sourcesv1alpha1.GitHubSource) error {
-	args := r.newEventTypeReconcilerArgs(source)
+	args := r.ProvideReconcilerArgs(source)
 	return r.eventTypeReconciler.ReconcileEventTypes(ctx, source, args)
 }
 
-func (r *reconciler) newEventTypeReconcilerArgs(source *sourcesv1alpha1.GitHubSource) *EventTypeReconcilerArgs {
+func (r *reconciler) ProvideReconcilerArgs(source *sourcesv1alpha1.GitHubSource) *eventtype.EventTypeReconcilerArgs {
 	specs := make([]eventingv1alpha1.EventTypeSpec, 0)
 	for _, et := range source.Spec.EventTypes {
 		spec := eventingv1alpha1.EventTypeSpec{
@@ -365,11 +368,15 @@ func (r *reconciler) newEventTypeReconcilerArgs(source *sourcesv1alpha1.GitHubSo
 		}
 		specs = append(specs, spec)
 	}
-	return &EventTypeReconcilerArgs{
+	return &eventtype.EventTypeReconcilerArgs{
 		EventTypeSpecs: specs,
 		Namespace:      source.Namespace,
 		Labels:         resources.Labels(source.Name),
 	}
+}
+
+func (r *reconciler) MarkEventTypes(source *sourcesv1alpha1.GitHubSource) {
+	source.Status.MarkEventTypes()
 }
 
 func (r *reconciler) addFinalizer(s *sourcesv1alpha1.GitHubSource) {
@@ -386,6 +393,6 @@ func (r *reconciler) removeFinalizer(s *sourcesv1alpha1.GitHubSource) {
 
 func (r *reconciler) InjectClient(c client.Client) error {
 	r.client = c
-	r.eventTypeReconciler.Client = c
+	//r.eventTypeReconciler.Client = c
 	return nil
 }
