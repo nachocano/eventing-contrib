@@ -62,3 +62,9 @@ rules:
   resources:
   - eventtypes
   verbs: *everything
+
+- apiGroups:
+    - eventing.knative.dev
+  resources:
+    - triggers
+  verbs: *readOnly
