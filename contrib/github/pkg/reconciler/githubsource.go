@@ -253,7 +253,7 @@ func (r *reconciler) createWebhook(ctx context.Context, args *webhookArgs) (stri
 		domain:      args.domain,
 		owner:       owner,
 		repo:        repo,
-		events:      args.source.Spec.EventTypes,
+		events:      []string{"pull_request"}, //args.source.Spec.EventTypes,
 		secure:      args.source.Spec.Secure,
 	}
 	hookID, err := r.webhookClient.Create(ctx, hookOptions, args.alternateGitHubAPIURL)
@@ -277,7 +277,7 @@ func (r *reconciler) deleteWebhook(ctx context.Context, args *webhookArgs) error
 		accessToken: args.accessToken,
 		owner:       owner,
 		repo:        repo,
-		events:      args.source.Spec.EventTypes,
+		events:      []string{"pull_request"}, //args.source.Spec.EventTypes,
 		secure:      args.source.Spec.Secure,
 	}
 	err = r.webhookClient.Delete(ctx, hookOptions, args.hookID, args.alternateGitHubAPIURL)
@@ -351,7 +351,7 @@ func (r *reconciler) reconcileEventTypes(ctx context.Context, source *sourcesv1a
 
 func (r *reconciler) newEventTypeReconcilerArgs(source *sourcesv1alpha1.GitHubSource) *eventtype.ReconcilerArgs {
 	specs := make([]eventingv1alpha1.EventTypeSpec, 0)
-	for _, et := range source.Spec.EventTypes {
+	for _, et := range []string{"pull_request"} {
 		spec := eventingv1alpha1.EventTypeSpec{
 			Type:   sourcesv1alpha1.GitHubEventType(et),
 			Source: sourcesv1alpha1.GitHubEventSource(source.Spec.OwnerAndRepository),

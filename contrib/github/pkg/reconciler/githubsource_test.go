@@ -869,7 +869,14 @@ func getGitHubSource() *sourcesv1alpha1.GitHubSource {
 		ObjectMeta: om(testNS, gitHubSourceName),
 		Spec: sourcesv1alpha1.GitHubSourceSpec{
 			OwnerAndRepository: "myuser/myproject",
-			EventTypes:         []string{"pull_request"},
+			EventTypes: sourcesv1alpha1.GithubEventTypes{
+				PullRequest: &sourcesv1alpha1.GitHubPullRequest{
+					CloudEventProperties: sourcesv1alpha1.CloudEventProperties{
+						Type:   "whatever",
+						Schema: "my-schema",
+					},
+				},
+			},
 			AccessToken: sourcesv1alpha1.SecretValueFromSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -905,7 +912,14 @@ func getGitHubEnterpriseSource() *sourcesv1alpha1.GitHubSource {
 		ObjectMeta: om(testNS, gitHubSourceName),
 		Spec: sourcesv1alpha1.GitHubSourceSpec{
 			OwnerAndRepository: "myuser/myproject",
-			EventTypes:         []string{"pull_request"},
+			EventTypes: sourcesv1alpha1.GithubEventTypes{
+				PullRequest: &sourcesv1alpha1.GitHubPullRequest{
+					CloudEventProperties: sourcesv1alpha1.CloudEventProperties{
+						Type:   "whatever",
+						Schema: "my-schema",
+					},
+				},
+			},
 			AccessToken: sourcesv1alpha1.SecretValueFromSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{
@@ -942,7 +956,14 @@ func getGitHubSourceUnaddressable() *sourcesv1alpha1.GitHubSource {
 		ObjectMeta: om(testNS, gitHubSourceName),
 		Spec: sourcesv1alpha1.GitHubSourceSpec{
 			OwnerAndRepository: "myuser/myproject",
-			EventTypes:         []string{"pull_request"},
+			EventTypes: sourcesv1alpha1.GithubEventTypes{
+				PullRequest: &sourcesv1alpha1.GitHubPullRequest{
+					CloudEventProperties: sourcesv1alpha1.CloudEventProperties{
+						Type:   "whatever",
+						Schema: "my-schema",
+					},
+				},
+			},
 			AccessToken: sourcesv1alpha1.SecretValueFromSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{

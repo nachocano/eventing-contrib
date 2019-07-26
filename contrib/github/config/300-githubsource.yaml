@@ -50,45 +50,59 @@ spec:
                   type: object
               type: object
             eventTypes:
-              items:
-                enum:
-                - check_suite
-                - commit_comment
-                - create
-                - delete
-                - deployment
-                - deployment_status
-                - fork
-                - gollum
-                - installation
-                - integration_installation
-                - issue_comment
-                - issues
-                - label
-                - member
-                - membership
-                - milestone
-                - organization
-                - org_block
-                - page_build
-                - ping
-                - project_card
-                - project_column
-                - project
-                - public
-                - pull_request
-                - pull_request_review
-                - pull_request_review_comment
-                - push
-                - release
-                - repository
-                - status
-                - team
-                - team_add
-                - watch
-                type: string
-              minItems: 1
-              type: array
+              type: object
+              properties:
+                pullRequest:
+                  type: object
+                  properties:
+                    ceType:
+                      type: string
+                      # Defaulting is enabled since k8s 1.15, enabling the CustomResourceDefaulting feature gate
+                      # See: https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/#defaulting
+                      # default: "dev.knative.source.github.pull_request"
+                      # Will need a webhook for setting up defaults in importers if not.
+                      pattern: "dev.knative.source.github.pull_request"
+                    ceSchema:
+                      type: string
+                      pattern: "http://pull-request-schema"
+                  required:
+                    - ceType
+                push:
+                  type: object
+                  properties:
+                    ceType:
+                      type: string
+                      pattern: "dev.knative.source.github.push"
+                    ceSchema:
+                      type: string
+                      pattern: "http://pull-request-schema"
+                  # additionalProperties:
+                    onlyForPush:
+                      type: string
+                      description: "Some push specific property"
+                  required:
+                    - ceType
+                    - onlyForPush
+                fork:
+                  type: object
+                  properties:
+                    ceType:
+                      type: string
+                      pattern: "dev.knative.source.github.fork"
+                    ceSchema:
+                      type: string
+                      pattern: "http://fork-schema"
+                  # additionalProperties:
+                    onlyForFork:
+                      type: string
+                      description: "Some fork specific property"
+                    anotherOneForFork:
+                      type: string
+                      description: "Some other one fork specific property"
+                  required:
+                    - ceType
+                    - onlyForFork
+                    - anotherOneForFork
             ownerAndRepository:
               minLength: 1
               type: string

@@ -51,13 +51,7 @@ type GitHubSourceSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	OwnerAndRepository string `json:"ownerAndRepository"`
 
-	// EventType is the type of event to receive from GitHub. These
-	// correspond to the "Webhook event name" values listed at
-	// https://developer.github.com/v3/activity/events/types/ - ie
-	// "pull_request"
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:Enum=check_suite,commit_comment,create,delete,deployment,deployment_status,fork,gollum,installation,integration_installation,issue_comment,issues,label,member,membership,milestone,organization,org_block,page_build,ping,project_card,project_column,project,public,pull_request,pull_request_review,pull_request_review_comment,push,release,repository,status,team,team_add,watch
-	EventTypes []string `json:"eventTypes"`
+	EventTypes GithubEventTypes `json:"eventTypes"`
 
 	// AccessToken is the Kubernetes secret containing the GitHub
 	// access token
@@ -79,6 +73,32 @@ type GitHubSourceSpec struct {
 	// Secure can be set to true to configure the webhook to use https.
 	// +optional
 	Secure bool `json:"secure,omitempty"`
+}
+
+type CloudEventProperties struct {
+	Type   string `json:"ceType"`
+	Schema string `json:"ceSchema,omitempty"`
+}
+
+type GithubEventTypes struct {
+	PullRequest *GitHubPullRequest `json:"pullRequest,omitempty"`
+	Push        *GitHubPush        `json:"push,omitempty"`
+	Fork        *GitHubFork        `json:"fork,omitempty"`
+}
+
+type GitHubPullRequest struct {
+	CloudEventProperties `json:",inline"`
+}
+
+type GitHubPush struct {
+	CloudEventProperties `json:",inline"`
+	PushSpecific         string `json:"onlyForPush"`
+}
+
+type GitHubFork struct {
+	CloudEventProperties `json:",inline"`
+	OneForFork           string `json:"onlyForFork"`
+	AnotherOneForFork    string `json:"anotherOneForFork"`
 }
 
 // SecretValueFromSource represents the source of a secret value
