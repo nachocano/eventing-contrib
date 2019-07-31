@@ -62,9 +62,6 @@ spec:
                       # default: "dev.knative.source.github.pull_request"
                       # Will need a webhook for setting up defaults in importers if not.
                       pattern: "dev.knative.source.github.pull_request"
-                    ceSchema:
-                      type: string
-                      pattern: "http://pull-request-schema"
                   required:
                     - ceType
                 push:
@@ -73,9 +70,6 @@ spec:
                     ceType:
                       type: string
                       pattern: "dev.knative.source.github.push"
-                    ceSchema:
-                      type: string
-                      pattern: "http://pull-request-schema"
                   # additionalProperties:
                     onlyForPush:
                       type: string
@@ -89,9 +83,6 @@ spec:
                     ceType:
                       type: string
                       pattern: "dev.knative.source.github.fork"
-                    ceSchema:
-                      type: string
-                      pattern: "http://fork-schema"
                   # additionalProperties:
                     onlyForFork:
                       type: string
