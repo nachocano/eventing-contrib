@@ -57,7 +57,8 @@ func main() {
 	defer flush(logger)
 
 	// set up signals so we handle the first shutdown signal gracefully
-	stopCh := signals.SetupSignalHandler()
+	ctx := signals.NewContext()
+	stopCh := ctx.Done()
 
 	cfg, err := clientcmd.BuildConfigFromFlags(*masterURL, *kubeconfig)
 	if err != nil {
@@ -125,7 +126,7 @@ func main() {
 	}
 
 	logger.Info("Starting dispatcher.")
-	go natssDispatcher.Start(stopCh)
+	go natssDispatcher.Start(ctx)
 
 	logger.Info("Starting controllers.")
 	kncontroller.StartAll(stopCh, controllers[:]...)

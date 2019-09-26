@@ -20,11 +20,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	stan "github.com/nats-io/go-nats-streaming"
+	cloudevents "github.com/cloudevents/sdk-go"
+	"github.com/nats-io/go-nats-streaming"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"knative.dev/eventing-contrib/natss/pkg/stanutil"
@@ -45,12 +47,20 @@ var (
 	retryInterval = 1 * time.Second
 )
 
+// Message represents a chunk of data within a channel dispatcher. The message contains both
+// a set of headers and a CloudEvent. This struct gets marshaled/unmarshaled in order to
+// preserve and pass header information to the event subscriber.
+type message struct {
+	Headers http.Header       `json:"headers,omitempty"`
+	Event   cloudevents.Event `json:"event,omitempty"`
+}
+
 // SubscriptionsSupervisor manages the state of NATS Streaming subscriptions
 type SubscriptionsSupervisor struct {
 	logger *zap.Logger
 
-	receiver   *channels.MessageReceiver
-	dispatcher *channels.MessageDispatcher
+	receiver   *channels.EventReceiver
+	dispatcher *channels.EventDispatcher
 
 	subscriptionsMux sync.Mutex
 	subscriptions    map[channels.ChannelReference]map[subscriptionReference]*stan.Subscription
@@ -72,7 +82,7 @@ type SubscriptionsSupervisor struct {
 func NewDispatcher(natssURL, clusterID, clientID string, logger *zap.Logger) (*SubscriptionsSupervisor, error) {
 	d := &SubscriptionsSupervisor{
 		logger:        logger,
-		dispatcher:    channels.NewMessageDispatcher(logger.Sugar()),
+		dispatcher:    channels.NewEventDispatcher(logger),
 		connect:       make(chan struct{}, maxElements),
 		natssURL:      natssURL,
 		clusterID:     clusterID,
@@ -80,9 +90,9 @@ func NewDispatcher(natssURL, clusterID, clientID string, logger *zap.Logger) (*S
 		subscriptions: make(map[channels.ChannelReference]map[subscriptionReference]*stan.Subscription),
 	}
 	d.setHostToChannelMap(map[string]channels.ChannelReference{})
-	receiver, err := channels.NewMessageReceiver(
+	receiver, err := channels.NewEventReceiver(
 		createReceiverFunction(d, logger.Sugar()),
-		logger.Sugar(),
+		logger,
 		channels.ResolveChannelFromHostHeader(channels.ResolveChannelFromHostFunc(d.getChannelReferenceFromHost)))
 	if err != nil {
 		return nil, err
@@ -100,12 +110,18 @@ func (s *SubscriptionsSupervisor) signalReconnect() {
 	}
 }
 
-func createReceiverFunction(s *SubscriptionsSupervisor, logger *zap.SugaredLogger) func(channels.ChannelReference, *channels.Message) error {
-	return func(channel channels.ChannelReference, m *channels.Message) error {
+func createReceiverFunction(s *SubscriptionsSupervisor, logger *zap.SugaredLogger) func(context.Context, channels.ChannelReference, cloudevents.Event) error {
+	return func(ctx context.Context, channel channels.ChannelReference, event cloudevents.Event) error {
 		logger.Infof("Received message from %q channel", channel.String())
 		// publish to Natss
 		ch := getSubject(channel)
-		message, err := json.Marshal(m)
+		// Needed to pass the header information extracted from the context.
+		tctx := cloudevents.HTTPTransportContextFrom(ctx)
+		message := message{
+			Headers: tctx.Header,
+			Event:   event,
+		}
+		msg, err := json.Marshal(message)
 		if err != nil {
 			logger.Errorf("Error during marshaling of the message: %v", err)
 			return err
@@ -116,7 +132,7 @@ func createReceiverFunction(s *SubscriptionsSupervisor, logger *zap.SugaredLogge
 		if currentNatssConn == nil {
 			return fmt.Errorf("No Connection to NATSS")
 		}
-		if err := stanutil.Publish(currentNatssConn, ch, &message, logger); err != nil {
+		if err := stanutil.Publish(currentNatssConn, ch, &msg, logger); err != nil {
 			logger.Errorf("Error during publish: %v", err)
 			if err.Error() == stan.ErrConnectionClosed.Error() {
 				logger.Error("Connection to NATSS has been lost, attempting to reconnect.")
@@ -126,20 +142,20 @@ func createReceiverFunction(s *SubscriptionsSupervisor, logger *zap.SugaredLogge
 			}
 			return err
 		}
-		logger.Debugf("Published [%s] : '%s'", channel.String(), m.Headers)
+		logger.Debugf("Published [%s] : '%s'", channel.String(), message.Headers)
 		return nil
 	}
 }
 
-func (s *SubscriptionsSupervisor) Start(stopCh <-chan struct{}) error {
+func (s *SubscriptionsSupervisor) Start(ctx context.Context) error {
 	// Starting Connect to establish connection with NATS
-	go s.Connect(stopCh)
+	go s.Connect(ctx)
 	// Trigger Connect to establish connection with NATS
 	s.signalReconnect()
-	return s.receiver.Start(stopCh)
+	return s.receiver.Start(ctx)
 }
 
-func (s *SubscriptionsSupervisor) connectWithRetry(stopCh <-chan struct{}) {
+func (s *SubscriptionsSupervisor) connectWithRetry(ctx context.Context) {
 	// re-attempting evey 1 second until the connection is established.
 	ticker := time.NewTicker(retryInterval)
 	defer ticker.Stop()
@@ -157,14 +173,14 @@ func (s *SubscriptionsSupervisor) connectWithRetry(stopCh <-chan struct{}) {
 		select {
 		case <-ticker.C:
 			continue
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
 // Connect is called for initial connection as well as after every disconnect
-func (s *SubscriptionsSupervisor) Connect(stopCh <-chan struct{}) {
+func (s *SubscriptionsSupervisor) Connect(ctx context.Context) {
 	for {
 		select {
 		case <-s.connect:
@@ -176,9 +192,9 @@ func (s *SubscriptionsSupervisor) Connect(stopCh <-chan struct{}) {
 				s.natssConnMux.Lock()
 				s.natssConnInProgress = true
 				s.natssConnMux.Unlock()
-				go s.connectWithRetry(stopCh)
+				go s.connectWithRetry(ctx)
 			}
-		case <-stopCh:
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -265,13 +281,21 @@ func (s *SubscriptionsSupervisor) subscribe(channel channels.ChannelReference, s
 	s.logger.Info("Subscribe to channel:", zap.Any("channel", channel), zap.Any("subscription", subscription))
 
 	mcb := func(msg *stan.Msg) {
-		message := channels.Message{}
+		message := message{}
 		if err := json.Unmarshal(msg.Data, &message); err != nil {
 			s.logger.Error("Failed to unmarshal message: ", zap.Error(err))
 			return
 		}
 		s.logger.Sugar().Debugf("NATSS message received from subject: %v; sequence: %v; timestamp: %v, headers: '%s'", msg.Subject, msg.Sequence, msg.Timestamp, message.Headers)
-		if err := s.dispatcher.DispatchMessage(&message, subscription.SubscriberURI, subscription.ReplyURI, channels.DispatchDefaults{Namespace: channel.Namespace}); err != nil {
+		// Set the headers to the context.
+		ctx := context.Background()
+		for n, v := range message.Headers {
+			for _, iv := range v {
+				ctx = cloudevents.ContextWithHeader(ctx, n, iv)
+			}
+		}
+
+		if err := s.dispatcher.DispatchEvent(ctx, message.Event, subscription.SubscriberURI, subscription.ReplyURI); err != nil {
 			s.logger.Error("Failed to dispatch message: ", zap.Error(err))
 			return
 		}
