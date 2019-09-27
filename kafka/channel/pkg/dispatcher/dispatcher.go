@@ -338,27 +338,26 @@ func toKafkaMessage(channel channels.ChannelReference, event *cloudevents.Event,
 		Topic: topicFunc(utils.KafkaChannelSeparator, channel.Namespace, channel.Name),
 		Value: sarama.ByteEncoder(data),
 	}
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_specversion"), Value: []byte(event.SpecVersion())})
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_type"), Value: []byte(event.Type())})
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_source"), Value: []byte(event.Source())})
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_id"), Value: []byte(event.ID())})
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_time"), Value: []byte(event.Time().Format(time.RFC3339))})
+	addHeader(&kafkaMessage, "ce_specversion", event.SpecVersion())
+	addHeader(&kafkaMessage, "ce_type", event.Type())
+	addHeader(&kafkaMessage, "ce_source", event.Source())
+	addHeader(&kafkaMessage, "ce_id", event.ID())
+	addHeader(&kafkaMessage, "ce_time", event.Time().Format(time.RFC3339))
 	if event.DataContentType() != "" {
-		kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_datacontenttype"), Value: []byte(event.DataContentType())})
+		addHeader(&kafkaMessage, "ce_datacontenttype", event.DataContentType())
 	}
 	if event.Subject() != "" {
-		kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_subject"), Value: []byte(event.Subject())})
+		addHeader(&kafkaMessage, "ce_subject", event.Subject())
 	}
 	if event.DataSchema() != "" {
-		kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_dataschema"), Value: []byte(event.DataSchema())})
+		addHeader(&kafkaMessage, "ce_dataschema", event.DataSchema())
 	}
 	// Only setting string extensions.
 	for k, v := range event.Extensions() {
 		if vs, ok := v.(string); ok {
-			kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte("ce_" + k), Value: []byte(vs)})
+			addHeader(&kafkaMessage, "ce_"+k, vs)
 		}
 	}
-
 	return &kafkaMessage
 }
 
@@ -368,4 +367,8 @@ func newSubscription(spec eventingduck.SubscriberSpec) subscription {
 		SubscriberURI: spec.SubscriberURI,
 		ReplyURI:      spec.ReplyURI,
 	}
+}
+
+func addHeader(kafkaMessage *sarama.ProducerMessage, key, value string) {
+	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte(key), Value: []byte(value)})
 }
