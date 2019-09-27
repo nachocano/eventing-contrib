@@ -307,11 +307,11 @@
   revision = "6f77996f0c42f7b84e5a2b252227263f93432e9b"
 
 [[projects]]
-  digest = "1:7915c656a10819b240db94ffd6afc6a621af4687db735341d9919668750485ec"
+  digest = "1:10aa62acd56f635de190110a836aa261b3774e697b2b6a7af27d8263cf856d47"
   name = "github.com/google/go-containerregistry"
   packages = ["pkg/name"]
   pruneopts = "NUT"
-  revision = "abf9ef06abd9f532944e28e8942644ea4b710a40"
+  revision = "b02d448a3705facf11018efff34f1d2830be5724"
 
 [[projects]]
   digest = "1:f4f203acd8b11b8747bdcd91696a01dbc95ccb9e2ca2db6abf81c3a4f5e950ce"
@@ -1659,7 +1659,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c24ab8c80a7870e36bc7b4f244813045199aab0805851df1443f4ea2ba0c8651"
+  digest = "1:b873e29eba37f033adca2c3ac96dd39b5b9d67e112d969ab41c9d71ba1ed39ad"
   name = "knative.dev/serving"
   packages = [
     "pkg/apis/autoscaling",
@@ -1668,6 +1668,7 @@
     "pkg/apis/networking",
     "pkg/apis/networking/v1alpha1",
     "pkg/apis/serving",
+    "pkg/apis/serving/v1",
     "pkg/apis/serving/v1alpha1",
     "pkg/apis/serving/v1beta1",
     "pkg/gc",
@@ -1675,7 +1676,7 @@
     "pkg/reconciler/route/config",
   ]
   pruneopts = "NUT"
-  revision = "24ae126893d0b26ba621b5d874ed76d8d67cfcd3"
+  revision = "9056d7e6cc439d891f3b20a0a3aa35f63143f307"
 
 [[projects]]
   branch = "master"
