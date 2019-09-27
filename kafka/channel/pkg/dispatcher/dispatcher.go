@@ -277,7 +277,7 @@ func NewDispatcher(args *KafkaDispatcherArgs) (*KafkaDispatcher, error) {
 	}
 	receiverFunc, err := channels.NewEventReceiver(
 		func(ctx context.Context, channel channels.ChannelReference, event cloudevents.Event) error {
-			dispatcher.kafkaAsyncProducer.Input() <- toKafkaMessage(ctx, channel, &event, args.TopicFunc)
+			dispatcher.kafkaAsyncProducer.Input() <- toKafkaMessage(channel, &event, args.TopicFunc)
 			return nil
 		},
 		args.Logger,
@@ -332,7 +332,7 @@ func fromKafkaMessage(kafkaMessage *sarama.ConsumerMessage) *cloudevents.Event {
 	return event
 }
 
-func toKafkaMessage(ctx context.Context, channel channels.ChannelReference, event *cloudevents.Event, topicFunc TopicFunc) *sarama.ProducerMessage {
+func toKafkaMessage(channel channels.ChannelReference, event *cloudevents.Event, topicFunc TopicFunc) *sarama.ProducerMessage {
 	data, _ := event.DataBytes()
 	kafkaMessage := sarama.ProducerMessage{
 		Topic: topicFunc(utils.KafkaChannelSeparator, channel.Namespace, channel.Name),
