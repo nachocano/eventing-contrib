@@ -28,7 +28,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/cloudevents/sdk-go"
-	cehttp "github.com/cloudevents/sdk-go/pkg/cloudevents/transport/http"
 	"knative.dev/eventing-contrib/kafka/channel/pkg/utils"
 	"knative.dev/eventing-contrib/kafka/common/pkg/kafka"
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
@@ -71,11 +70,8 @@ type consumerMessageHandler struct {
 }
 
 func (c consumerMessageHandler) Handle(ctx context.Context, message *sarama.ConsumerMessage) (bool, error) {
-	sctx, event, err := fromKafkaMessage(ctx, message)
-	if err != nil {
-		return true, err
-	}
-	return true, c.dispatcher.DispatchEvent(sctx, *event, c.sub.SubscriberURI, c.sub.ReplyURI)
+	event := fromKafkaMessage(message)
+	return true, c.dispatcher.DispatchEvent(ctx, *event, c.sub.SubscriberURI, c.sub.ReplyURI)
 }
 
 var _ kafka.KafkaConsumerHandler = (*consumerMessageHandler)(nil)
@@ -305,9 +301,8 @@ func (d *KafkaDispatcher) getChannelReferenceFromHost(host string) (channels.Cha
 	return cr, nil
 }
 
-func fromKafkaMessage(ctx context.Context, kafkaMessage *sarama.ConsumerMessage) (context.Context, *cloudevents.Event, error) {
-	var event = cloudevents.Event{}
-	headers := kafkaMessage.Headers
+func fromKafkaMessage(kafkaMessage *sarama.ConsumerMessage) *cloudevents.Event {
+	var event = &cloudevents.Event{}
 	for _, header := range kafkaMessage.Headers {
 		h := string(header.Key)
 		v := string(header.Value)
@@ -325,13 +320,16 @@ func fromKafkaMessage(ctx context.Context, kafkaMessage *sarama.ConsumerMessage)
 		case "ce_time":
 			t, _ := time.Parse(time.RFC3339, v)
 			event.SetTime(t)
+		case "ce_subject":
+			event.SetSubject(v)
+		case "ce_dataschema":
+			event.SetDataSchema(v)
 		default:
 			// Extensions
 			event.SetExtension(h, v)
 		}
 	}
-	ctx = cehttp.WithTransportContext(ctx, cehttp.TransportContext{Header: headers})
-	return ctx, event, nil
+	return event
 }
 
 func toKafkaMessage(ctx context.Context, channel channels.ChannelReference, event *cloudevents.Event, topicFunc TopicFunc) *sarama.ProducerMessage {
