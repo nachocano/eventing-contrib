@@ -21,7 +21,8 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	apisv1alpha1 "knative.dev/pkg/apis/v1alpha1"
+	"knative.dev/pkg/apis"
+	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
 )
 
 var (
@@ -29,7 +30,7 @@ var (
 		BootstrapServers: "servers",
 		Topics:           "topics",
 		ConsumerGroup:    "group",
-		Sink: &apisv1alpha1.Destination{
+		Sink: &duckv1beta1.Destination{
 			Ref: &corev1.ObjectReference{
 				APIVersion: "foo",
 				Kind:       "bar",
@@ -73,7 +74,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &apisv1alpha1.Destination{
+				Sink: &duckv1beta1.Destination{
 					Ref: &corev1.ObjectReference{
 						APIVersion: "some-other-api-version",
 						Kind:       fullSpec.Sink.Ref.APIVersion,
@@ -89,7 +90,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &apisv1alpha1.Destination{
+				Sink: &duckv1beta1.Destination{
 					Ref: &corev1.ObjectReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       "some-other-kind",
@@ -105,7 +106,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &apisv1alpha1.Destination{
+				Sink: &duckv1beta1.Destination{
 					Ref: &corev1.ObjectReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
@@ -121,7 +122,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &apisv1alpha1.Destination{
+				Sink: &duckv1beta1.Destination{
 					Ref: &corev1.ObjectReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
@@ -137,7 +138,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &apisv1alpha1.Destination{
+				Sink: &duckv1beta1.Destination{
 					Ref: &corev1.ObjectReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
@@ -158,16 +159,18 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 
 	for n, tc := range testCases {
 		t.Run(n, func(t *testing.T) {
-			var orig *KafkaSource
+			ctx := context.TODO()
 			if tc.orig != nil {
-				orig = &KafkaSource{
+				orig := &KafkaSource{
 					Spec: *tc.orig,
 				}
+				ctx = apis.WithinUpdate(ctx, orig)
 			}
 			updated := &KafkaSource{
 				Spec: tc.updated,
 			}
-			err := updated.CheckImmutableFields(context.TODO(), orig)
+
+			err := updated.Validate(ctx)
 			if tc.allowed != (err == nil) {
 				t.Fatalf("Unexpected immutable field check. Expected %v. Actual %v", tc.allowed, err)
 			}

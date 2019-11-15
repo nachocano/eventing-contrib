@@ -17,12 +17,12 @@ limitations under the License.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"knative.dev/pkg/apis/duck"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
+	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
 	"knative.dev/pkg/kmeta"
 )
 
@@ -68,10 +68,27 @@ type PrometheusSourceSpec struct {
 	// PromQL is the Prometheus query for this source
 	PromQL string `json:"promQL"`
 
-	// Sink is a reference to an object that will resolve to a domain
+	// The name of the file containing the authenication token
+	// +optional
+	AuthTokenFile string `json:"authTokenFile,omitempty"`
+
+	// The name of the config map containing the CA certificate of the
+	// Prometheus service's signer.
+	// +optional
+	CACertConfigMap string `json:"caCertConfigMap,omitempty"`
+
+	// A crontab-formatted schedule for running the PromQL query
+	Schedule string `json:"schedule"`
+
+	// Query resolution step width in duration format or float number of seconds.
+	// Prometheus duration strings are of the form [0-9]+[smhdwy].
+	// +optional
+	Step string `json:"step,omitempty"`
+
+	// Sink is a reference to an object that will resolve to a host
 	// name to use as the sink.
 	// +optional
-	Sink *corev1.ObjectReference `json:"sink,omitempty"`
+	Sink *duckv1beta1.Destination `json:"sink,omitempty"`
 }
 
 // GetGroupVersionKind returns the GroupVersionKind.

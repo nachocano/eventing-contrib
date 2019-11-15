@@ -46,6 +46,10 @@ type Channelable struct {
 // ChannelableSpec contains Spec of the Channelable object
 type ChannelableSpec struct {
 	SubscribableTypeSpec `json:",inline"`
+
+	// DeliverySpec contains options controlling the event delivery
+	// +optional
+	Delivery *DeliverySpec `json:"delivery,omitempty"`
 }
 
 // ChannelableStatus contains the Status of a Channelable object.
@@ -58,6 +62,9 @@ type ChannelableStatus struct {
 	v1alpha1.AddressStatus `json:",inline"`
 	// Subscribers is populated with the statuses of each of the Channelable's subscribers.
 	SubscribableTypeStatus `json:",inline"`
+	// ErrorChannel is set by the channel when it supports native error handling via a channel
+	// +optional
+	ErrorChannel *corev1.ObjectReference `json:"errorChannel,omitempty"`
 }
 
 var (
@@ -81,6 +88,23 @@ func (c *Channelable) Populate() {
 			SubscriberURI: "call2",
 			ReplyURI:      "sink2",
 		}},
+	}
+	retry := int32(5)
+	linear := BackoffPolicyLinear
+	delay := "5s"
+	c.Spec.Delivery = &DeliverySpec{
+		DeadLetterSink: &duckv1beta1.Destination{
+			Ref: &corev1.ObjectReference{
+				Name: "aname",
+			},
+			URI: &apis.URL{
+				Scheme: "http",
+				Host:   "test-error-domain",
+			},
+		},
+		Retry:         &retry,
+		BackoffPolicy: &linear,
+		BackoffDelay:  &delay,
 	}
 	c.Status = ChannelableStatus{
 		AddressStatus: v1alpha1.AddressStatus{

@@ -26,7 +26,7 @@ import (
 
 	"knative.dev/eventing/pkg/apis/eventing/v1alpha1"
 	"knative.dev/pkg/apis"
-	apisv1alpha1 "knative.dev/pkg/apis/v1alpha1"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
 
 const (
@@ -61,13 +61,13 @@ func NewTrigger(name, namespace, broker string, to ...TriggerOption) *v1alpha1.T
 func WithTriggerSubscriberURI(rawurl string) TriggerOption {
 	uri, _ := apis.ParseURL(rawurl)
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &apisv1alpha1.Destination{URI: uri}
+		t.Spec.Subscriber = &duckv1.Destination{URI: uri}
 	}
 }
 
 func WithTriggerSubscriberRef(gvk metav1.GroupVersionKind, name string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &apisv1alpha1.Destination{
+		t.Spec.Subscriber = &duckv1.Destination{
 			Ref: &corev1.ObjectReference{
 				APIVersion: apiVersion(gvk),
 				Kind:       gvk.Kind,
@@ -80,7 +80,7 @@ func WithTriggerSubscriberRef(gvk metav1.GroupVersionKind, name string) TriggerO
 func WithTriggerSubscriberRefAndURIReference(gvk metav1.GroupVersionKind, name string, rawuri string) TriggerOption {
 	uri, _ := apis.ParseURL(rawuri)
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &apisv1alpha1.Destination{
+		t.Spec.Subscriber = &duckv1.Destination{
 			Ref: &corev1.ObjectReference{
 				APIVersion: apiVersion(gvk),
 				Kind:       gvk.Kind,
@@ -137,6 +137,15 @@ func WithUnmarshalFailedDependencyAnnotation() TriggerOption {
 	}
 }
 
+func WithInjectionAnnotation(injectionAnnotation string) TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		if t.Annotations == nil {
+			t.Annotations = make(map[string]string)
+		}
+		t.Annotations[v1alpha1.InjectionAnnotation] = injectionAnnotation
+	}
+}
+
 func WithDependencyAnnotation(dependencyAnnotation string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
 		if t.Annotations == nil {
@@ -161,6 +170,24 @@ func WithTriggerDependencyFailed(reason, message string) TriggerOption {
 func WithTriggerDependencyUnknown(reason, message string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
 		t.Status.MarkDependencyUnknown(reason, message)
+	}
+}
+
+func WithTriggerSubscriberResolvedSucceeded() TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkSubscriberResolvedSucceeded()
+	}
+}
+
+func WithTriggerSubscriberResolvedFailed(reason, message string) TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkSubscriberResolvedFailed(reason, message)
+	}
+}
+
+func WithTriggerSubscriberResolvedUnknown(reason, message string) TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkSubscriberResolvedUnknown(reason, message)
 	}
 }
 
