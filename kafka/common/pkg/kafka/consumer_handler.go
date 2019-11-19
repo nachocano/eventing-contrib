@@ -62,14 +62,16 @@ func (consumer *saramaConsumerHandler) Cleanup(session sarama.ConsumerGroupSessi
 
 // ConsumeClaim must start a consumer loop of ConsumerGroupClaim's Messages().
 func (consumer *saramaConsumerHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	consumer.logger.Info(fmt.Sprintf("Starting Consumer Group Handler, topic: %s", claim.Topic()))
+	consumer.logger.Info(fmt.Sprintf("Starting partition consumer, topic: %s, partition: %d", claim.Topic(), claim.Partition()))
 
 	// NOTE:
 	// Do not move the code below to a goroutine.
 	// The `ConsumeClaim` itself is called within a goroutine, see:
 	// https://github.com/Shopify/sarama/blob/master/consumer_group.go#L27-L29
 	for message := range claim.Messages() {
-		consumer.logger.Debug(fmt.Sprintf("Message claimed: value = %s, timestamp = %v, topic = %s", string(message.Value), message.Timestamp, message.Topic))
+		if ce := consumer.logger.Check(zap.DebugLevel, "debugging"); ce != nil {
+			consumer.logger.Debug("Message claimed", zap.String("topic", message.Topic), zap.Binary("value", message.Value))
+		}
 
 		mustMark, err := consumer.handler.Handle(session.Context(), message)
 
@@ -78,13 +80,14 @@ func (consumer *saramaConsumerHandler) ConsumeClaim(session sarama.ConsumerGroup
 		}
 		if mustMark {
 			session.MarkMessage(message, "") // Mark kafka message as processed
-			consumer.logger.Debug(fmt.Sprintf("Message marked: value = %s, timestamp = %v, topic = %s", string(message.Value), message.Timestamp, message.Topic))
+			if ce := consumer.logger.Check(zap.DebugLevel, "debugging"); ce != nil {
+				consumer.logger.Debug("Message marked", zap.String("topic", message.Topic), zap.Binary("value", message.Value))
+			}
 		}
 
 	}
 
-	consumer.logger.Info(fmt.Sprintf("Stopping Consumer Group Handler, topic: %s", claim.Topic()))
-
+	consumer.logger.Info(fmt.Sprintf("Stopping partition consumer, topic: %s, partition: %d", claim.Topic(), claim.Partition()))
 	return nil
 }
 
