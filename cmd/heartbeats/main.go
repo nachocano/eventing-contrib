@@ -55,13 +55,16 @@ func init() {
 
 type envConfig struct {
 	// Sink URL where to send heartbeat cloudevents
-	Sink string `envconfig:"SINK"`
+	Sink string `envconfig:"K_SINK"`
 
 	// Name of this pod.
 	Name string `envconfig:"POD_NAME" required:"true"`
 
 	// Namespace this pod exists in.
 	Namespace string `envconfig:"POD_NAMESPACE" required:"true"`
+
+	// Whether to run continuously or exit.
+	OneShot bool `envconfig:"ONE_SHOT" default:"false"`
 }
 
 func main() {
@@ -106,21 +109,26 @@ func main() {
 		hb.Sequence++
 
 		event := cloudevents.Event{
-			Context: cloudevents.EventContextV03{
+			Context: cloudevents.EventContextV1{
 				Type:   eventType,
-				Source: *types.ParseURLRef(eventSource),
+				Source: *types.ParseURIRef(eventSource),
 				Extensions: map[string]interface{}{
 					"the":   42,
 					"heart": "yes",
 					"beats": true,
 				},
-			}.AsV02(),
+			}.AsV1(),
 			Data: hb,
 		}
 
 		if _, _, err := c.Send(context.Background(), event); err != nil {
 			log.Printf("failed to send cloudevent: %s", err.Error())
 		}
+
+		if env.OneShot {
+			return
+		}
+
 		// Wait for next tick
 		<-ticker.C
 	}

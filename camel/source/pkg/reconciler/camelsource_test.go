@@ -19,6 +19,7 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	camelv1alpha1 "github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
@@ -35,8 +36,10 @@ import (
 	sourcesv1alpha1 "knative.dev/eventing-contrib/camel/source/pkg/apis/sources/v1alpha1"
 	"knative.dev/eventing-contrib/camel/source/pkg/reconciler/resources"
 	controllertesting "knative.dev/eventing-contrib/pkg/controller/testing"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
 	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
+	"knative.dev/pkg/client/injection/ducks/duck/v1/addressable"
 	"knative.dev/pkg/injection/clients/dynamicclient"
 	"knative.dev/pkg/resolver"
 )
@@ -72,7 +75,9 @@ func init() {
 		corev1.AddToScheme,
 		sourcesv1alpha1.SchemeBuilder.AddToScheme,
 		duckv1alpha1.AddToScheme,
+		duckv1beta1.AddToScheme,
 		camelv1alpha1.SchemeBuilder.AddToScheme,
+		duckv1.SchemeBuilder.AddToScheme,
 	)
 }
 
@@ -92,7 +97,9 @@ func TestReconcile(t *testing.T) {
 				getDeletedSource(),
 			},
 			WantPresent: []runtime.Object{
-				getDeletedSource(),
+				// ResourceVersion needs to be bumped because of the change
+				// https://github.com/kubernetes-sigs/controller-runtime/pull/620
+				withBumpedResourceVersion(getDeletedSource()),
 			},
 			WantAbsent: []runtime.Object{
 				getContext(),
@@ -105,7 +112,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := getSourceWithNoSink()
+					s := withBumpedResourceVersion(getSourceWithNoSink())
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -123,7 +130,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := getDeployingSource()
+					s := withBumpedResourceVersion(getDeployingSource())
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -141,7 +148,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := asDeployedSource(getSource())
+					s := withBumpedResourceVersion(asDeployedSource(getSource()))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -161,7 +168,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := asDeployedSource(getCamelKSource())
+					s := withBumpedResourceVersion(asDeployedSource(getCamelKSource()))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -180,11 +187,11 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := withUpdatingIntegration(getSource())
+					s := withBumpedResourceVersion(withUpdatingIntegration(getSource()))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
-				getRunningIntegration(t),
+				withBumpedResourceVersionIn(getRunningIntegration(t)),
 			},
 			WantAbsent: []runtime.Object{
 				getContext(),
@@ -200,11 +207,11 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := withUpdatingIntegration(getCamelKSource())
+					s := withBumpedResourceVersion(withUpdatingIntegration(getCamelKSource()))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
-				getRunningCamelKIntegration(t),
+				withBumpedResourceVersionIn(getRunningCamelKIntegration(t)),
 			},
 			WantAbsent: []runtime.Object{
 				getContext(),
@@ -220,7 +227,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := withAlternativeContext(asDeployedSource(getSource()))
+					s := withBumpedResourceVersion(withAlternativeContext(asDeployedSource(getSource())))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -239,7 +246,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := withAlternativeContext(asDeployedSource(getCamelKSource()))
+					s := withBumpedResourceVersion(withAlternativeContext(asDeployedSource(getCamelKSource())))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -257,7 +264,7 @@ func TestReconcile(t *testing.T) {
 			},
 			WantPresent: []runtime.Object{
 				func() runtime.Object {
-					s := asDeployedSource(getCamelKFlowSource())
+					s := withBumpedResourceVersion(asDeployedSource(getCamelKFlowSource()))
 					s.Status.ObservedGeneration = generation
 					return s
 				}(),
@@ -276,8 +283,9 @@ func TestReconcile(t *testing.T) {
 
 		c := tc.GetClient()
 		dynClient := fake.NewSimpleDynamicClient(scheme.Scheme, tc.InitialState...)
-		baseContext := context.WithValue(context.Background(), dynamicclient.Key{}, dynClient)
-		ctx, cancel := context.WithCancel(baseContext)
+		ctx := context.WithValue(context.Background(), dynamicclient.Key{}, dynClient)
+		ctx, cancel := context.WithCancel(ctx)
+		ctx = addressable.WithDuck(ctx)
 
 		r := &reconciler{
 			client:       c,
@@ -321,6 +329,20 @@ func getSource() *sourcesv1alpha1.CamelSource {
 	// selflink is not filled in when we create the object, so clear it
 	obj.ObjectMeta.SelfLink = ""
 	return obj
+}
+
+func withBumpedResourceVersion(cs *sourcesv1alpha1.CamelSource) *sourcesv1alpha1.CamelSource {
+	cs.ResourceVersion = bumpVersion(cs.ResourceVersion)
+	return cs
+}
+
+func bumpVersion(version string) string {
+	v := 0
+	if len(version) != 0 {
+		v, _ = strconv.Atoi(version)
+	}
+	v++
+	return fmt.Sprintf("%d", v)
 }
 
 func getCamelKSource() *sourcesv1alpha1.CamelSource {
@@ -400,6 +422,11 @@ func withAlternativeContext(src *sourcesv1alpha1.CamelSource) *sourcesv1alpha1.C
 	}
 	src.Spec.Source.Integration.Kit = alternativeKitName
 	return src
+}
+
+func withBumpedResourceVersionIn(in *camelv1alpha1.Integration) *camelv1alpha1.Integration {
+	in.ResourceVersion = bumpVersion(in.ResourceVersion)
+	return in
 }
 
 func getContext() *camelv1alpha1.IntegrationKit {

@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	eventingv1alpha1 "knative.dev/eventing/pkg/apis/eventing/v1alpha1"
 	flowsv1alpha1 "knative.dev/eventing/pkg/apis/flows/v1alpha1"
+	legacysourcesv1alpha1 "knative.dev/eventing/pkg/apis/legacysources/v1alpha1"
 	messagingv1alpha1 "knative.dev/eventing/pkg/apis/messaging/v1alpha1"
 	sourcesv1alpha1 "knative.dev/eventing/pkg/apis/sources/v1alpha1"
 	fakeeventingclientset "knative.dev/eventing/pkg/client/clientset/versioned/fake"
@@ -40,7 +41,8 @@ import (
 	flowslisters "knative.dev/eventing/pkg/client/listers/flows/v1alpha1"
 	messaginglisters "knative.dev/eventing/pkg/client/listers/messaging/v1alpha1"
 	sourcelisters "knative.dev/eventing/pkg/client/listers/sources/v1alpha1"
-	fakesharedclientset "knative.dev/pkg/client/clientset/versioned/fake"
+	fakelegacyclientset "knative.dev/eventing/pkg/legacyclient/clientset/versioned/fake"
+	legacysourcelisters "knative.dev/eventing/pkg/legacyclient/listers/legacysources/v1alpha1"
 	"knative.dev/pkg/reconciler/testing"
 )
 
@@ -51,8 +53,8 @@ var subscriberAddToScheme = func(scheme *runtime.Scheme) error {
 
 var clientSetSchemes = []func(*runtime.Scheme) error{
 	fakekubeclientset.AddToScheme,
-	fakesharedclientset.AddToScheme,
 	fakeeventingclientset.AddToScheme,
+	fakelegacyclientset.AddToScheme,
 	fakeapiextensionsclientset.AddToScheme,
 	subscriberAddToScheme,
 }
@@ -98,6 +100,10 @@ func (l *Listers) GetEventingObjects() []runtime.Object {
 	return l.sorter.ObjectsForSchemeFunc(fakeeventingclientset.AddToScheme)
 }
 
+func (l *Listers) GetLegacyObjects() []runtime.Object {
+	return l.sorter.ObjectsForSchemeFunc(fakelegacyclientset.AddToScheme)
+}
+
 func (l *Listers) GetSubscriberObjects() []runtime.Object {
 	return l.sorter.ObjectsForSchemeFunc(subscriberAddToScheme)
 }
@@ -105,12 +111,9 @@ func (l *Listers) GetSubscriberObjects() []runtime.Object {
 func (l *Listers) GetAllObjects() []runtime.Object {
 	all := l.GetSubscriberObjects()
 	all = append(all, l.GetEventingObjects()...)
+	all = append(all, l.GetLegacyObjects()...)
 	all = append(all, l.GetKubeObjects()...)
 	return all
-}
-
-func (l *Listers) GetSharedObjects() []runtime.Object {
-	return l.sorter.ObjectsForSchemeFunc(fakesharedclientset.AddToScheme)
 }
 
 func (l *Listers) GetSubscriptionLister() messaginglisters.SubscriptionLister {
@@ -153,16 +156,20 @@ func (l *Listers) GetFlowsParallelLister() flowslisters.ParallelLister {
 	return flowslisters.NewParallelLister(l.indexerFor(&flowsv1alpha1.Parallel{}))
 }
 
-func (l *Listers) GetCronJobSourceLister() sourcelisters.CronJobSourceLister {
-	return sourcelisters.NewCronJobSourceLister(l.indexerFor(&sourcesv1alpha1.CronJobSource{}))
-}
-
 func (l *Listers) GetApiServerSourceLister() sourcelisters.ApiServerSourceLister {
 	return sourcelisters.NewApiServerSourceLister(l.indexerFor(&sourcesv1alpha1.ApiServerSource{}))
 }
 
-func (l *Listers) GetContainerSourceLister() sourcelisters.ContainerSourceLister {
-	return sourcelisters.NewContainerSourceLister(l.indexerFor(&sourcesv1alpha1.ContainerSource{}))
+func (l *Listers) GetLegacyCronJobSourceLister() legacysourcelisters.CronJobSourceLister {
+	return legacysourcelisters.NewCronJobSourceLister(l.indexerFor(&legacysourcesv1alpha1.CronJobSource{}))
+}
+
+func (l *Listers) GetLegacyApiServerSourceLister() legacysourcelisters.ApiServerSourceLister {
+	return legacysourcelisters.NewApiServerSourceLister(l.indexerFor(&legacysourcesv1alpha1.ApiServerSource{}))
+}
+
+func (l *Listers) GetLegacyContainerSourceLister() legacysourcelisters.ContainerSourceLister {
+	return legacysourcelisters.NewContainerSourceLister(l.indexerFor(&legacysourcesv1alpha1.ContainerSource{}))
 }
 
 func (l *Listers) GetDeploymentLister() appsv1listers.DeploymentLister {
