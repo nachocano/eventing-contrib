@@ -30,6 +30,8 @@ import (
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
 	"knative.dev/eventing/pkg/channel/fanout"
 	"knative.dev/eventing/pkg/channel/multichannelfanout"
+	"knative.dev/eventing/pkg/channel/swappable"
+	"knative.dev/eventing/pkg/kncloudevents"
 	"knative.dev/eventing/pkg/logging"
 	"knative.dev/eventing/pkg/reconciler"
 	"knative.dev/pkg/configmap"
@@ -88,18 +90,36 @@ func NewController(
 ) *controller.Impl {
 
 	logger := logging.FromContext(ctx)
+	base := reconciler.NewBase(ctx, controllerAgentName, cmw)
 
-	kafkaConfig, err := utils.GetKafkaConfig("/etc/config-kafka")
+	configMap, err := configmap.Load("/etc/config-kafka")
+	if err != nil {
+		logger.Fatal("error loading configuration", zap.Error(err))
+	}
+
+	kafkaConfig, err := utils.GetKafkaConfig(configMap)
 	if err != nil {
 		logger.Fatal("Error loading kafka config", zap.Error(err))
 	}
 
+	connectionArgs := &kncloudevents.ConnectionArgs{
+		MaxIdleConns:        kafkaConfig.MaxIdleConns,
+		MaxIdleConnsPerHost: kafkaConfig.MaxIdleConnsPerHost,
+	}
+
+	handler, err := swappable.NewEmptyHandler(base.Logger.Desugar())
+	if err != nil {
+		logger.Fatal("Error creating multichannelfanout.Handler", zap.Error(err))
+	}
+
 	kafkaChannelInformer := kafkachannel.Get(ctx)
 	args := &dispatcher.KafkaDispatcherArgs{
-		ClientID:  "kafka-ch-dispatcher",
-		Brokers:   kafkaConfig.Brokers,
-		TopicFunc: utils.TopicName,
-		Logger:    logger,
+		KnCEConnectionArgs: connectionArgs,
+		Handler:            handler,
+		ClientID:           "kafka-ch-dispatcher",
+		Brokers:            kafkaConfig.Brokers,
+		TopicFunc:          utils.TopicName,
+		Logger:             logger,
 	}
 	kafkaDispatcher, err := dispatcher.NewDispatcher(args)
 	if err != nil {
@@ -109,7 +129,7 @@ func NewController(
 	logger.Info("Kafka broker configuration", zap.Strings(utils.BrokerConfigMapKey, kafkaConfig.Brokers))
 
 	r := &Reconciler{
-		Base:                 reconciler.NewBase(ctx, controllerAgentName, cmw),
+		Base:                 base,
 		kafkaDispatcher:      kafkaDispatcher,
 		kafkachannelLister:   kafkaChannelInformer.Lister(),
 		kafkachannelInformer: kafkaChannelInformer.Informer(),
@@ -124,7 +144,7 @@ func NewController(
 
 	logger.Info("Starting dispatcher.")
 	go func() {
-		if err := kafkaDispatcher.Start(ctx.Done()); err != nil {
+		if err := kafkaDispatcher.Start(ctx); err != nil {
 			logger.Error("Cannot start dispatcher", zap.Error(err))
 		}
 	}()

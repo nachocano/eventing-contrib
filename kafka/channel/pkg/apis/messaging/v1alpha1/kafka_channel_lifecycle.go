@@ -29,7 +29,8 @@ var kc = apis.NewLivingConditionSet(
 	KafkaChannelConditionServiceReady,
 	KafkaChannelConditionEndpointsReady,
 	KafkaChannelConditionAddressable,
-	KafkaChannelConditionChannelServiceReady)
+	KafkaChannelConditionChannelServiceReady,
+	KafkaChannelConditionConfigReady)
 
 const (
 	// KafkaChannelConditionReady has status True when all subconditions below have been set to True.
@@ -59,6 +60,10 @@ const (
 
 	// KafkaChannelConditionTopicReady has status True when the Kafka topic to use by the channel exists.
 	KafkaChannelConditionTopicReady apis.ConditionType = "TopicReady"
+
+	// KafkaChannelConditionConfigReady has status True when the Kafka configuration to use by the channel exists and is valid
+	// (ie. the connection has been established).
+	KafkaChannelConditionConfigReady apis.ConditionType = "ConfigurationReady"
 )
 
 // GetCondition returns the condition currently associated with the given type, or nil.
@@ -96,14 +101,20 @@ func (cs *KafkaChannelStatus) MarkDispatcherFailed(reason, messageFormat string,
 	kc.Manage(cs).MarkFalse(KafkaChannelConditionDispatcherReady, reason, messageFormat, messageA...)
 }
 
+func (cs *KafkaChannelStatus) MarkDispatcherUnknown(reason, messageFormat string, messageA ...interface{}) {
+	kc.Manage(cs).MarkUnknown(KafkaChannelConditionDispatcherReady, reason, messageFormat, messageA...)
+}
+
 // TODO: Unify this with the ones from Eventing. Say: Broker, Trigger.
 func (cs *KafkaChannelStatus) PropagateDispatcherStatus(ds *appsv1.DeploymentStatus) {
 	for _, cond := range ds.Conditions {
 		if cond.Type == appsv1.DeploymentAvailable {
-			if cond.Status != corev1.ConditionTrue {
-				cs.MarkDispatcherFailed("DispatcherNotReady", "Dispatcher Deployment is not ready: %s : %s", cond.Reason, cond.Message)
-			} else {
+			if cond.Status == corev1.ConditionTrue {
 				kc.Manage(cs).MarkTrue(KafkaChannelConditionDispatcherReady)
+			} else if cond.Status == corev1.ConditionFalse {
+				cs.MarkDispatcherFailed("DispatcherDeploymentFalse", "The status of Dispatcher Deployment is False: %s : %s", cond.Reason, cond.Message)
+			} else if cond.Status == corev1.ConditionUnknown {
+				cs.MarkDispatcherUnknown("DispatcherDeploymentUnknown", "The status of Dispatcher Deployment is Unknown: %s : %s", cond.Reason, cond.Message)
 			}
 		}
 	}
@@ -111,6 +122,10 @@ func (cs *KafkaChannelStatus) PropagateDispatcherStatus(ds *appsv1.DeploymentSta
 
 func (cs *KafkaChannelStatus) MarkServiceFailed(reason, messageFormat string, messageA ...interface{}) {
 	kc.Manage(cs).MarkFalse(KafkaChannelConditionServiceReady, reason, messageFormat, messageA...)
+}
+
+func (cs *KafkaChannelStatus) MarkServiceUnknown(reason, messageFormat string, messageA ...interface{}) {
+	kc.Manage(cs).MarkUnknown(KafkaChannelConditionServiceReady, reason, messageFormat, messageA...)
 }
 
 func (cs *KafkaChannelStatus) MarkServiceTrue() {
@@ -139,4 +154,12 @@ func (cs *KafkaChannelStatus) MarkTopicTrue() {
 
 func (cs *KafkaChannelStatus) MarkTopicFailed(reason, messageFormat string, messageA ...interface{}) {
 	kc.Manage(cs).MarkFalse(KafkaChannelConditionTopicReady, reason, messageFormat, messageA...)
+}
+
+func (cs *KafkaChannelStatus) MarkConfigTrue() {
+	kc.Manage(cs).MarkTrue(KafkaChannelConditionConfigReady)
+}
+
+func (cs *KafkaChannelStatus) MarkConfigFailed(reason, messageFormat string, messageA ...interface{}) {
+	kc.Manage(cs).MarkFalse(KafkaChannelConditionConfigReady, reason, messageFormat, messageA...)
 }

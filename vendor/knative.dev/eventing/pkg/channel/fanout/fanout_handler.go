@@ -43,7 +43,8 @@ type Config struct {
 	Subscriptions []eventingduck.SubscriberSpec `json:"subscriptions"`
 	// AsyncHandler controls whether the Subscriptions are called synchronous or asynchronously.
 	// It is expected to be false when used as a sidecar.
-	AsyncHandler bool `json:"asyncHandler,omitempty"`
+	AsyncHandler     bool `json:"asyncHandler,omitempty"`
+	DispatcherConfig channel.EventDispatcherConfig
 }
 
 // Handler is a http.Handler that takes a single request in and fans it out to N other servers.
@@ -72,7 +73,7 @@ func NewHandler(logger *zap.Logger, config Config) (*Handler, error) {
 	handler := &Handler{
 		logger:         logger,
 		config:         config,
-		dispatcher:     channel.NewEventDispatcher(logger),
+		dispatcher:     channel.NewEventDispatcherFromConfig(logger, config.DispatcherConfig),
 		receivedEvents: make(chan *forwardEvent, eventBufferSize),
 		timeout:        defaultTimeout,
 	}
@@ -132,5 +133,5 @@ func (f *Handler) dispatch(ctx context.Context, event cloudevents.Event) error {
 // makeFanoutRequest sends the request to exactly one subscription. It handles both the `call` and
 // the `sink` portions of the subscription.
 func (f *Handler) makeFanoutRequest(ctx context.Context, event cloudevents.Event, sub eventingduck.SubscriberSpec) error {
-	return f.dispatcher.DispatchEventWithDelivery(ctx, event, sub.SubscriberURI, sub.ReplyURI, &channel.DeliveryOptions{DeadLetterSink: sub.DeadLetterSinkURI})
+	return f.dispatcher.DispatchEventWithDelivery(ctx, event, sub.SubscriberURI.String(), sub.ReplyURI.String(), &channel.DeliveryOptions{DeadLetterSink: sub.DeadLetterSinkURI.String()})
 }

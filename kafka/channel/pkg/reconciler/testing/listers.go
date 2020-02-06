@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	fakeeventingclientset "knative.dev/eventing/pkg/client/clientset/versioned/fake"
 	fakeeventsclientset "knative.dev/eventing/pkg/client/clientset/versioned/fake"
-	fakesharedclientset "knative.dev/pkg/client/clientset/versioned/fake"
+	fakelegacyclientset "knative.dev/eventing/pkg/legacyclient/clientset/versioned/fake"
 	"knative.dev/pkg/reconciler/testing"
 
 	messagingv1alpha1 "knative.dev/eventing-contrib/kafka/channel/pkg/apis/messaging/v1alpha1"
@@ -36,9 +36,9 @@ import (
 
 var clientSetSchemes = []func(*runtime.Scheme) error{
 	fakekubeclientset.AddToScheme,
-	fakesharedclientset.AddToScheme,
 	fakeeventsclientset.AddToScheme,
 	fakemessagingclientset.AddToScheme,
+	fakelegacyclientset.AddToScheme,
 	fakeeventingclientset.AddToScheme,
 }
 
@@ -47,6 +47,7 @@ type Listers struct {
 }
 
 func NewListers(objs []runtime.Object) Listers {
+
 	scheme := runtime.NewScheme()
 
 	for _, addTo := range clientSetSchemes {
@@ -74,6 +75,10 @@ func (l *Listers) GetEventingObjects() []runtime.Object {
 	return l.sorter.ObjectsForSchemeFunc(fakeeventingclientset.AddToScheme)
 }
 
+func (l *Listers) GetLegacyObjects() []runtime.Object {
+	return l.sorter.ObjectsForSchemeFunc(fakelegacyclientset.AddToScheme)
+}
+
 func (l *Listers) GetEventsObjects() []runtime.Object {
 	return l.sorter.ObjectsForSchemeFunc(fakeeventsclientset.AddToScheme)
 }
@@ -85,12 +90,9 @@ func (l *Listers) GetMessagingObjects() []runtime.Object {
 func (l *Listers) GetAllObjects() []runtime.Object {
 	all := l.GetMessagingObjects()
 	all = append(all, l.GetEventsObjects()...)
+	all = append(all, l.GetLegacyObjects()...)
 	all = append(all, l.GetKubeObjects()...)
 	return all
-}
-
-func (l *Listers) GetSharedObjects() []runtime.Object {
-	return l.sorter.ObjectsForSchemeFunc(fakesharedclientset.AddToScheme)
 }
 
 func (l *Listers) GetServiceLister() corev1listers.ServiceLister {

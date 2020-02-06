@@ -32,6 +32,8 @@ import (
 	"testing"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go"
+	"github.com/cloudevents/sdk-go/pkg/cloudevents/types"
 	"knative.dev/eventing/pkg/adapter"
 	"knative.dev/pkg/source"
 
@@ -39,26 +41,240 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/cloudevents/sdk-go/pkg/cloudevents/client"
+
 	sourcesv1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1alpha1"
 	"knative.dev/eventing-contrib/pkg/kncloudevents"
 )
 
 func TestPostMessage_ServeHTTP(t *testing.T) {
+	aTimestamp := time.Now()
+
 	testCases := map[string]struct {
-		sink              func(http.ResponseWriter, *http.Request)
-		reqBody           string
-		attributes        map[string]string
-		expectedEventType string
-		error             bool
+		sink            func(http.ResponseWriter, *http.Request)
+		keyTypeMapper   string
+		message         *sarama.ConsumerMessage
+		expectedHeaders map[string]string
+		expectedBody    string
+		error           bool
 	}{
-		"accepted": {
-			sink:    sinkAccepted,
-			reqBody: `{"key":"value"}`,
+		"accepted_simple": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:       []byte("key"),
+				Topic:     "topic1",
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":        makeEventId(1, 2),
+				"ce-time":      types.FormatTime(aTimestamp),
+				"ce-type":      sourcesv1alpha1.KafkaEventType,
+				"ce-source":    sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":   makeEventSubject(1, 2),
+				"ce-key":       "key",
+				"content-type": cloudevents.ApplicationJSON,
+			},
+			expectedBody: `{"key":"value"}`,
+			error:        false,
+		},
+		"accepted_int_key": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:       []byte{255, 0, 23, 23},
+				Topic:     "topic1",
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":        makeEventId(1, 2),
+				"ce-time":      types.FormatTime(aTimestamp),
+				"ce-type":      sourcesv1alpha1.KafkaEventType,
+				"ce-source":    sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":   makeEventSubject(1, 2),
+				"ce-key":       "-16771305",
+				"content-type": cloudevents.ApplicationJSON,
+			},
+			expectedBody:  `{"key":"value"}`,
+			error:         false,
+			keyTypeMapper: "int",
+		},
+		"accepted_float_key": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:       []byte{1, 10, 23, 23},
+				Topic:     "topic1",
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":        makeEventId(1, 2),
+				"ce-time":      types.FormatTime(aTimestamp),
+				"ce-type":      sourcesv1alpha1.KafkaEventType,
+				"ce-source":    sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":   makeEventSubject(1, 2),
+				"ce-key":       "0.00000000000000000000000000000000000002536316309005082",
+				"content-type": cloudevents.ApplicationJSON,
+			},
+			expectedBody:  `{"key":"value"}`,
+			error:         false,
+			keyTypeMapper: "float",
+		},
+		"accepted_byte-array_key": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:       []byte{1, 10, 23, 23},
+				Topic:     "topic1",
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":        makeEventId(1, 2),
+				"ce-time":      types.FormatTime(aTimestamp),
+				"ce-type":      sourcesv1alpha1.KafkaEventType,
+				"ce-source":    sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":   makeEventSubject(1, 2),
+				"ce-key":       "AQoXFw==",
+				"content-type": cloudevents.ApplicationJSON,
+			},
+			expectedBody:  `{"key":"value"}`,
+			error:         false,
+			keyTypeMapper: "byte-array",
+		},
+		"accepted_complex": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:   []byte("key"),
+				Topic: "topic1",
+				Headers: []*sarama.RecordHeader{
+					{
+						Key: []byte("hello"), Value: []byte("world"),
+					},
+					{
+						Key: []byte("name"), Value: []byte("Francesco"),
+					},
+				},
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":               makeEventId(1, 2),
+				"ce-time":             types.FormatTime(aTimestamp),
+				"ce-type":             sourcesv1alpha1.KafkaEventType,
+				"ce-source":           sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":          makeEventSubject(1, 2),
+				"ce-key":              "key",
+				"content-type":        cloudevents.ApplicationJSON,
+				"ce-kafkaheaderhello": "world",
+				"ce-kafkaheadername":  "Francesco",
+			},
+			expectedBody: `{"key":"value"}`,
+			error:        false,
+		},
+		"accepted_fix_bad_headers": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:   []byte("key"),
+				Topic: "topic1",
+				Headers: []*sarama.RecordHeader{
+					{
+						Key: []byte("hello-bla"), Value: []byte("world"),
+					},
+					{
+						Key: []byte("name"), Value: []byte("Francesco"),
+					},
+				},
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":                  makeEventId(1, 2),
+				"ce-time":                types.FormatTime(aTimestamp),
+				"ce-type":                sourcesv1alpha1.KafkaEventType,
+				"ce-source":              sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":             makeEventSubject(1, 2),
+				"ce-key":                 "key",
+				"content-type":           cloudevents.ApplicationJSON,
+				"ce-kafkaheaderhellobla": "world",
+				"ce-kafkaheadername":     "Francesco",
+			},
+			expectedBody: `{"key":"value"}`,
+			error:        false,
+		},
+		"accepted_structured": {
+			sink: sinkAccepted,
+			message: &sarama.ConsumerMessage{
+				Key:   []byte("key"),
+				Topic: "topic1",
+				Value: mustJsonMarshal(t, map[string]interface{}{
+					"specversion":          "1.0",
+					"type":                 "com.github.pull.create",
+					"source":               "https://github.com/cloudevents/spec/pull",
+					"subject":              "123",
+					"id":                   "A234-1234-1234",
+					"time":                 "2018-04-05T17:31:00Z",
+					"comexampleextension1": "value",
+					"comexampleothervalue": 5,
+					"datacontenttype":      "application/json",
+					"data": map[string]string{
+						"hello": "Francesco",
+					},
+				}),
+				Partition: 0,
+				Offset:    0,
+				Headers: []*sarama.RecordHeader{
+					{
+						Key: []byte("content-type"), Value: []byte("application/cloudevents+json; charset=UTF-8"),
+					},
+				},
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-specversion":          "1.0",
+				"ce-id":                   "A234-1234-1234",
+				"ce-time":                 "2018-04-05T17:31:00Z",
+				"ce-type":                 "com.github.pull.create",
+				"ce-subject":              "123",
+				"ce-source":               "https://github.com/cloudevents/spec/pull",
+				"ce-comexampleextension1": "value",
+				"ce-comexampleothervalue": "5",
+				"content-type":            "application/json",
+			},
+			expectedBody: `{"hello":"Francesco"}`,
+			error:        false,
 		},
 		"rejected": {
-			sink:    sinkRejected,
-			reqBody: `{"key":"value"}`,
-			error:   true,
+			sink: sinkRejected,
+			message: &sarama.ConsumerMessage{
+				Key:       []byte("key"),
+				Topic:     "topic1",
+				Value:     mustJsonMarshal(t, map[string]string{"key": "value"}),
+				Partition: 1,
+				Offset:    2,
+				Timestamp: aTimestamp,
+			},
+			expectedHeaders: map[string]string{
+				"ce-id":        makeEventId(1, 2),
+				"ce-time":      types.FormatTime(aTimestamp),
+				"ce-type":      sourcesv1alpha1.KafkaEventType,
+				"ce-source":    sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-subject":   makeEventSubject(1, 2),
+				"ce-key":       "key",
+				"content-type": cloudevents.ApplicationJSON,
+			},
+			expectedBody: `{"key":"value"}`,
+			error:        true,
 		},
 	}
 
@@ -88,45 +304,39 @@ func TestPostMessage_ServeHTTP(t *testing.T) {
 					c, _ := kncloudevents.NewDefaultClient(sinkServer.URL)
 					return c
 				}(),
-				logger:   zap.NewNop(),
-				reporter: statsReporter,
+				logger:        zap.NewNop(),
+				reporter:      statsReporter,
+				keyTypeMapper: getKeyTypeMapper(tc.keyTypeMapper),
 			}
 
-			data, err := json.Marshal(map[string]string{"key": "value"})
-			if err != nil {
-				t.Errorf("unexpected error, %v", err)
-			}
-
-			m := &sarama.ConsumerMessage{
-				Key:       []byte("key"),
-				Topic:     "topic1",
-				Value:     data,
-				Partition: 1,
-				Offset:    2,
-				Timestamp: time.Now(),
-			}
-
-			_, err = a.Handle(context.TODO(), m)
+			_, err := a.Handle(context.TODO(), tc.message)
 
 			if tc.error && err == nil {
 				t.Errorf("expected error, but got %v", err)
 			}
 
-			et := h.header.Get("Ce-Type")
-
-			expectedEventType := sourcesv1alpha1.KafkaEventType
-			if tc.expectedEventType != "" {
-				expectedEventType = tc.expectedEventType
+			// Check headers
+			for k, expected := range tc.expectedHeaders {
+				actual := h.header.Get(k)
+				if actual != expected {
+					t.Errorf("Expected header with key %s: '%q', but got '%q'", k, expected, actual)
+				}
 			}
 
-			if et != expectedEventType {
-				t.Errorf("Expected eventtype '%q', but got '%q'", tc.expectedEventType, et)
-			}
-			if tc.reqBody != string(h.body) {
-				t.Errorf("Expected request body '%q', but got '%q'", tc.reqBody, h.body)
+			// Check body
+			if tc.expectedBody != string(h.body) {
+				t.Errorf("Expected request body '%q', but got '%q'", tc.expectedBody, h.body)
 			}
 		})
 	}
+}
+
+func mustJsonMarshal(t *testing.T, val interface{}) []byte {
+	data, err := json.Marshal(val)
+	if err != nil {
+		t.Errorf("unexpected error, %v", err)
+	}
+	return data
 }
 
 func TestNewTLSConfig(t *testing.T) {

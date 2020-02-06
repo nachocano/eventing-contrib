@@ -18,12 +18,12 @@ package utils
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"syscall"
 
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
-	"knative.dev/pkg/configmap"
 )
 
 const (
@@ -37,6 +37,9 @@ const (
 	DefaultReplicationFactor = 1
 
 	knativeKafkaTopicPrefix = "knative-messaging-kafka"
+
+	DefaultMaxIdleConns        = 1000
+	DefaultMaxIdleConnsPerHost = 100
 )
 
 var (
@@ -44,16 +47,13 @@ var (
 )
 
 type KafkaConfig struct {
-	Brokers []string
+	Brokers             []string
+	MaxIdleConns        int
+	MaxIdleConnsPerHost int
 }
 
 // GetKafkaConfig returns the details of the Kafka cluster.
-func GetKafkaConfig(path string) (*KafkaConfig, error) {
-	configMap, err := configmap.Load(path)
-	if err != nil {
-		return nil, fmt.Errorf("error loading configuration: %s", err)
-	}
-
+func GetKafkaConfig(configMap map[string]string) (*KafkaConfig, error) {
 	if len(configMap) == 0 {
 		return nil, fmt.Errorf("missing configuration")
 	}
@@ -70,6 +70,26 @@ func GetKafkaConfig(path string) (*KafkaConfig, error) {
 		config.Brokers = bootstrapServers
 	} else {
 		return nil, fmt.Errorf("missing key %s in configuration", BrokerConfigMapKey)
+	}
+
+	if maxConns, ok := configMap["maxIdleConns"]; ok {
+		mc, err := strconv.Atoi(maxConns)
+		if err != nil {
+			config.MaxIdleConns = DefaultMaxIdleConns
+		}
+		config.MaxIdleConns = mc
+	} else {
+		config.MaxIdleConns = DefaultMaxIdleConns
+	}
+	if maxConnsPerHost, ok := configMap["maxIdleConnsPerHost"]; ok {
+		mcph, err := strconv.Atoi(maxConnsPerHost)
+		if err != nil {
+			config.MaxIdleConnsPerHost = DefaultMaxIdleConnsPerHost
+		}
+		config.MaxIdleConnsPerHost = mcph
+
+	} else {
+		config.MaxIdleConnsPerHost = DefaultMaxIdleConnsPerHost
 	}
 
 	return config, nil

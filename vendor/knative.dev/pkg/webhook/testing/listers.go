@@ -28,16 +28,16 @@ import (
 	autoscalingv2beta1listers "k8s.io/client-go/listers/autoscaling/v2beta1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	istiov1alpha3 "knative.dev/pkg/apis/istio/v1alpha3"
-	fakesharedclientset "knative.dev/pkg/client/clientset/versioned/fake"
-	istiolisters "knative.dev/pkg/client/listers/istio/v1alpha3"
 	"knative.dev/pkg/reconciler/testing"
+	pkgtesting "knative.dev/pkg/testing"
+	pkgducktesting "knative.dev/pkg/testing/duck"
 )
 
 var clientSetSchemes = []func(*runtime.Scheme) error{
 	fakekubeclientset.AddToScheme,
-	fakesharedclientset.AddToScheme,
 	autoscalingv2beta1.AddToScheme,
+	pkgtesting.AddToScheme,
+	pkgducktesting.AddToScheme,
 }
 
 // Listers is used to synthesize informer-style Listers from fixed lists of resources in tests.
@@ -83,24 +83,19 @@ func (l *Listers) GetKubeObjects() []runtime.Object {
 	return l.sorter.ObjectsForSchemeFunc(fakekubeclientset.AddToScheme)
 }
 
-// GetSharedObjects filters the Listers initial list of objects to types defined in knative/pkg
-func (l *Listers) GetSharedObjects() []runtime.Object {
-	return l.sorter.ObjectsForSchemeFunc(fakesharedclientset.AddToScheme)
+// GetTestObjects filters the Lister's initial list of objects to types defined in knative/pkg/testing
+func (l *Listers) GetTestObjects() []runtime.Object {
+	return l.sorter.ObjectsForSchemeFunc(pkgtesting.AddToScheme)
+}
+
+// GetDuckObjects filters the Listers initial list of objects to types defined in knative/pkg
+func (l *Listers) GetDuckObjects() []runtime.Object {
+	return l.sorter.ObjectsForSchemeFunc(pkgducktesting.AddToScheme)
 }
 
 // GetHorizontalPodAutoscalerLister gets lister for HorizontalPodAutoscaler resources.
 func (l *Listers) GetHorizontalPodAutoscalerLister() autoscalingv2beta1listers.HorizontalPodAutoscalerLister {
 	return autoscalingv2beta1listers.NewHorizontalPodAutoscalerLister(l.IndexerFor(&autoscalingv2beta1.HorizontalPodAutoscaler{}))
-}
-
-// GetVirtualServiceLister gets lister for Istio VirtualService resource.
-func (l *Listers) GetVirtualServiceLister() istiolisters.VirtualServiceLister {
-	return istiolisters.NewVirtualServiceLister(l.IndexerFor(&istiov1alpha3.VirtualService{}))
-}
-
-// GetGatewayLister gets lister for Istio Gateway resource.
-func (l *Listers) GetGatewayLister() istiolisters.GatewayLister {
-	return istiolisters.NewGatewayLister(l.IndexerFor(&istiov1alpha3.Gateway{}))
 }
 
 // GetDeploymentLister gets lister for K8s Deployment resource.

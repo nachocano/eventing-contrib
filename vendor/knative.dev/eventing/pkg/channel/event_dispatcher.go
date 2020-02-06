@@ -27,12 +27,23 @@ import (
 	"go.opencensus.io/plugin/ochttp/propagation/b3"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/util/sets"
+	pkgtracing "knative.dev/pkg/tracing"
+
 	"knative.dev/eventing/pkg/kncloudevents"
 	"knative.dev/eventing/pkg/tracing"
 	"knative.dev/eventing/pkg/utils"
 )
 
-const correlationIDHeaderName = "Knative-Correlation-Id"
+const (
+	correlationIDHeaderName = "Knative-Correlation-Id"
+
+	// Defaults for the underlying HTTP Client transport. These would enable better connection reuse.
+	// Set them on a 10:1 ratio, but this would actually depend on the Subscriptions' subscribers and the workload itself.
+	// These are magic numbers, partly set based on empirical evidence running performance workloads, and partly
+	// based on what serving is doing. See https://github.com/knative/serving/blob/master/pkg/network/transports.go.
+	defaultMaxIdleConnections        = 1000
+	defaultMaxIdleConnectionsPerHost = 100
+)
 
 type Dispatcher interface {
 	// DispatchEvent dispatches an event to a destination over HTTP.
@@ -68,7 +79,22 @@ type EventDispatcher struct {
 // NewEventDispatcher creates a new event dispatcher that can dispatch
 // events to HTTP destinations.
 func NewEventDispatcher(logger *zap.Logger) *EventDispatcher {
-	ceClient, err := kncloudevents.NewDefaultClient()
+	return NewEventDispatcherFromConfig(logger, defaultEventDispatcherConfig)
+}
+
+// NewEventDispatcherFromConfig creates a new event dispatcher based on config.
+func NewEventDispatcherFromConfig(logger *zap.Logger, config EventDispatcherConfig) *EventDispatcher {
+	httpTransport, err := cloudevents.NewHTTPTransport(
+		cloudevents.WithBinaryEncoding(),
+		cloudevents.WithMiddleware(pkgtracing.HTTPSpanMiddleware))
+	if err != nil {
+		logger.Fatal("Unable to create CE transport", zap.Error(err))
+	}
+	cArgs := kncloudevents.ConnectionArgs{
+		MaxIdleConns:        config.MaxIdleConns,
+		MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
+	}
+	ceClient, err := kncloudevents.NewDefaultClientGivenHttpTransport(httpTransport, &cArgs)
 	if err != nil {
 		logger.Fatal("failed to create cloudevents client", zap.Error(err))
 	}

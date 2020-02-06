@@ -21,7 +21,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"knative.dev/eventing/pkg/apis/sources/v1alpha1"
+	"knative.dev/eventing/pkg/apis/legacysources/v1alpha1"
 )
 
 // CronJobSourceOption enables further configuration of a CronJob.
@@ -51,6 +51,7 @@ func WithCronJobSourceUID(uid string) CronJobSourceOption {
 // WithInitCronJobSourceConditions initializes the CronJobSource's conditions.
 func WithInitCronJobSourceConditions(s *v1alpha1.CronJobSource) {
 	s.Status.InitializeConditions()
+	s.MarkDeprecated(&s.Status.Status, "CronJobSourceDeprecated", "cronjobsources.sources.eventing.knative.dev are deprecated and will be removed in the future. Use a CronJob and SinkBinding.sources.knative.dev instead.")
 }
 
 func WithValidCronJobSourceSchedule(s *v1alpha1.CronJobSource) {

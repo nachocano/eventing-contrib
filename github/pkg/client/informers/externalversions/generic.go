@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Knative Authors
+Copyright 2020 The Knative Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=sources.eventing.knative.dev, Version=v1alpha1
+	// Group=sources.knative.dev, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("githubsources"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Sources().V1alpha1().GitHubSources().Informer()}, nil
 

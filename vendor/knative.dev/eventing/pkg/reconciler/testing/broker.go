@@ -50,6 +50,18 @@ func WithInitBrokerConditions(b *v1alpha1.Broker) {
 	b.Status.InitializeConditions()
 }
 
+func WithBrokerGeneration(gen int64) BrokerOption {
+	return func(s *v1alpha1.Broker) {
+		s.Generation = gen
+	}
+}
+
+func WithBrokerStatusObservedGeneration(gen int64) BrokerOption {
+	return func(s *v1alpha1.Broker) {
+		s.Status.ObservedGeneration = gen
+	}
+}
+
 func WithBrokerDeletionTimestamp(b *v1alpha1.Broker) {
 	t := metav1.NewTime(time.Unix(1e9, 0))
 	b.ObjectMeta.SetDeletionTimestamp(&t)
@@ -100,13 +112,6 @@ func WithIngressFailed(reason, msg string) BrokerOption {
 	}
 }
 
-// WithIngressChannelFailed calls .Status.MarkIngressChannelFailed on the Broker.
-func WithIngressChannelFailed(reason, msg string) BrokerOption {
-	return func(b *v1alpha1.Broker) {
-		b.Status.MarkIngressChannelFailed(reason, msg)
-	}
-}
-
 // WithTriggerChannelReady calls .Status.PropagateTriggerChannelReadiness on the Broker.
 func WithTriggerChannelReady() BrokerOption {
 	return func(b *v1alpha1.Broker) {
@@ -126,26 +131,8 @@ func WithIngressDeploymentAvailable() BrokerOption {
 	}
 }
 
-func WithBrokerIngressChannelReady() BrokerOption {
-	return func(b *v1alpha1.Broker) {
-		b.Status.PropagateIngressChannelReadiness(v1alpha1.TestHelper.ReadyChannelStatus())
-	}
-}
-
-func WithBrokerIngressSubscriptionFailed(reason, msg string) BrokerOption {
-	return func(b *v1alpha1.Broker) {
-		b.Status.MarkIngressSubscriptionFailed(reason, msg)
-	}
-}
-
 func WithBrokerTriggerChannel(c *corev1.ObjectReference) BrokerOption {
 	return func(b *v1alpha1.Broker) {
 		b.Status.TriggerChannel = c
-	}
-}
-
-func WithBrokerIngressChannel(c *corev1.ObjectReference) BrokerOption {
-	return func(b *v1alpha1.Broker) {
-		b.Status.IngressChannel = c
 	}
 }

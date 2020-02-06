@@ -42,18 +42,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DISPATCHER_IMAGE
+              value: knative.dev/eventing-contrib/kafka/channel/cmd/channel_dispatcher
           ports:
             - containerPort: 9090
               name: metrics
           volumeMounts:
             - name: config-logging
               mountPath: /etc/config-logging
-            - name: config-kafka
-              mountPath: /etc/config-kafka
       volumes:
         - name: config-logging
           configMap:
             name: config-logging
-        - name: config-kafka
-          configMap:
-            name: config-kafka

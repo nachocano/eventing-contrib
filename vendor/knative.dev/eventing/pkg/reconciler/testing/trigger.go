@@ -61,13 +61,13 @@ func NewTrigger(name, namespace, broker string, to ...TriggerOption) *v1alpha1.T
 func WithTriggerSubscriberURI(rawurl string) TriggerOption {
 	uri, _ := apis.ParseURL(rawurl)
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &duckv1.Destination{URI: uri}
+		t.Spec.Subscriber = duckv1.Destination{URI: uri}
 	}
 }
 
 func WithTriggerSubscriberRef(gvk metav1.GroupVersionKind, name string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &duckv1.Destination{
+		t.Spec.Subscriber = duckv1.Destination{
 			Ref: &corev1.ObjectReference{
 				APIVersion: apiVersion(gvk),
 				Kind:       gvk.Kind,
@@ -80,7 +80,7 @@ func WithTriggerSubscriberRef(gvk metav1.GroupVersionKind, name string) TriggerO
 func WithTriggerSubscriberRefAndURIReference(gvk metav1.GroupVersionKind, name string, rawuri string) TriggerOption {
 	uri, _ := apis.ParseURL(rawuri)
 	return func(t *v1alpha1.Trigger) {
-		t.Spec.Subscriber = &duckv1.Destination{
+		t.Spec.Subscriber = duckv1.Destination{
 			Ref: &corev1.ObjectReference{
 				APIVersion: apiVersion(gvk),
 				Kind:       gvk.Kind,
@@ -94,6 +94,18 @@ func WithTriggerSubscriberRefAndURIReference(gvk metav1.GroupVersionKind, name s
 // WithInitTriggerConditions initializes the Triggers's conditions.
 func WithInitTriggerConditions(t *v1alpha1.Trigger) {
 	t.Status.InitializeConditions()
+}
+
+func WithTriggerGeneration(gen int64) TriggerOption {
+	return func(s *v1alpha1.Trigger) {
+		s.Generation = gen
+	}
+}
+
+func WithTriggerStatusObservedGeneration(gen int64) TriggerOption {
+	return func(s *v1alpha1.Trigger) {
+		s.Status.ObservedGeneration = gen
+	}
 }
 
 // WithTriggerBrokerReady initializes the Triggers's conditions.
@@ -110,9 +122,28 @@ func WithTriggerBrokerFailed(reason, message string) TriggerOption {
 	}
 }
 
+// WithTriggerBrokerUnknown marks the Broker as unknown
+func WithTriggerBrokerUnknown(reason, message string) TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkBrokerUnknown(reason, message)
+	}
+}
+
 func WithTriggerNotSubscribed(reason, message string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
 		t.Status.MarkNotSubscribed(reason, message)
+	}
+}
+
+func WithTriggerSubscribedUnknown(reason, message string) TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkSubscribedUnknown(reason, message)
+	}
+}
+
+func WithTriggerSubscriptionNotConfigured() TriggerOption {
+	return func(t *v1alpha1.Trigger) {
+		t.Status.MarkSubscriptionNotConfigured()
 	}
 }
 
@@ -124,7 +155,8 @@ func WithTriggerSubscribed() TriggerOption {
 
 func WithTriggerStatusSubscriberURI(uri string) TriggerOption {
 	return func(t *v1alpha1.Trigger) {
-		t.Status.SubscriberURI = uri
+		u, _ := apis.ParseURL(uri)
+		t.Status.SubscriberURI = u
 	}
 }
 
