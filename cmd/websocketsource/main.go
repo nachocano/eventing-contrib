@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 
 	"knative.dev/eventing-contrib/pkg/kncloudevents"
 
@@ -47,6 +48,11 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	k_sink := os.Getenv("K_SINK")
+	if k_sink != "" {
+		sink = k_sink
+	}
 
 	// "source" flag must not be empty for operation.
 	if source == "" {

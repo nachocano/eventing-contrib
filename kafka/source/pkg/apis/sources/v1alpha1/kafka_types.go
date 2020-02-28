@@ -29,8 +29,8 @@ import (
 )
 
 // +genclient
+// +genreconciler
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // KafkaSource is the Schema for the kafkasources API.
 // +k8s:openapi-gen=true
 type KafkaSource struct {
@@ -129,7 +129,7 @@ const (
 	// KafkaEventType is the Kafka CloudEvent type.
 	KafkaEventType = "dev.knative.kafka.event"
 
-	KafkaKeyTypeLabel = "kafkasources.sources.eventing.knative.dev/key-type"
+	KafkaKeyTypeLabel = "kafkasources.sources.knative.dev/key-type"
 )
 
 var KafkaKeyTypeAllowed = []string{"string", "int", "float", "byte-array"}

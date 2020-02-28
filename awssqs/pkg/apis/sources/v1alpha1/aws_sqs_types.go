@@ -20,17 +20,17 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"knative.dev/pkg/apis/duck"
-	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"knative.dev/pkg/apis"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
 
 // +genclient
+// +genreconciler
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AwsSqsSource is the Schema for the AWS SQS API
 // +k8s:openapi-gen=true
-// +kubebuilder:subresource:status
-// +kubebuilder:categories=all,knative,eventing,sources
 type AwsSqsSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -41,9 +41,6 @@ type AwsSqsSource struct {
 
 // Check that AwsSqsSource can be validated and can be defaulted.
 var _ runtime.Object = (*AwsSqsSource)(nil)
-
-// Check that AwsSqsSource implements the Conditions duck type.
-var _ = duck.VerifyType(&AwsSqsSource{}, &duckv1alpha1.Conditions{})
 
 // AwsSqsSourceSpec defines the desired state of the source.
 type AwsSqsSourceSpec struct {
@@ -56,7 +53,7 @@ type AwsSqsSourceSpec struct {
 	// Sink is a reference to an object that will resolve to a domain name to
 	// use as the sink.  This is where events will be received.
 	// +optional
-	Sink *corev1.ObjectReference `json:"sink,omitempty"`
+	Sink *corev1.ObjectReference `json:"sink,omitempty"` // TODO this is not the source duck anymore
 
 	// ServiceAccoutName is the name of the ServiceAccount that will be used to
 	// run the Receive Adapter Deployment.
@@ -71,39 +68,35 @@ const (
 const (
 	// AwsSqsSourceConditionReady has status True when the source is
 	// ready to send events.
-	AwsSqsSourceConditionReady = duckv1alpha1.ConditionReady
+	AwsSqsSourceConditionReady = apis.ConditionReady
 
 	// AwsSqsSourceConditionSinkProvided has status True when the
 	// AwsSqsSource has been configured with a sink target.
-	AwsSqsSourceConditionSinkProvided duckv1alpha1.ConditionType = "SinkProvided"
+	AwsSqsSourceConditionSinkProvided apis.ConditionType = "SinkProvided"
 
 	// AwsSqsSourceConditionDeployed has status True when the
 	// AwsSqsSource has had it's receive adapter deployment created.
-	AwsSqsSourceConditionDeployed duckv1alpha1.ConditionType = "Deployed"
-
-	// AwsSqsSourceConditionEventTypesProvided has status True when the
-	// AwsSqsSource has been configured with event types
-	AwsSqsSourceConditionEventTypesProvided duckv1alpha1.ConditionType = "EventTypesProvided"
+	AwsSqsSourceConditionDeployed apis.ConditionType = "Deployed"
 )
 
-var condSet = duckv1alpha1.NewLivingConditionSet(
+var condSet = apis.NewLivingConditionSet(
 	AwsSqsSourceConditionSinkProvided,
 	AwsSqsSourceConditionDeployed)
 
 // AwsSqsSourceStatus defines the observed state of the source.
 type AwsSqsSourceStatus struct {
-	// inherits duck/v1alpha1 Status, which currently provides:
-	// * ObservedGeneration - the 'Generation' of the Service that was last processed by the controller.
-	// * Conditions - the latest available observations of a resource's current state.
-	duckv1alpha1.Status `json:",inline"`
-
-	// SinkURI is the current active sink URI that has been configured for the source.
-	// +optional
-	SinkURI string `json:"sinkUri,omitempty"`
+	// inherits duck/v1 SourceStatus, which currently provides:
+	// * ObservedGeneration - the 'Generation' of the Service that was last
+	//   processed by the controller.
+	// * Conditions - the latest available observations of a resource's current
+	//   state.
+	// * SinkURI - the current active sink URI that has been configured for the
+	//   Source.
+	duckv1.SourceStatus `json:",inline"`
 }
 
 // GetCondition returns the condition currently associated with the given type, or nil.
-func (s *AwsSqsSourceStatus) GetCondition(t duckv1alpha1.ConditionType) *duckv1alpha1.Condition {
+func (s *AwsSqsSourceStatus) GetCondition(t apis.ConditionType) *apis.Condition {
 	return condSet.Manage(s).GetCondition(t)
 }
 
@@ -117,14 +110,26 @@ func (s *AwsSqsSourceStatus) InitializeConditions() {
 	condSet.Manage(s).InitializeConditions()
 }
 
+// GetGroupVersionKind returns GroupVersionKind for AwsSqsSource
+func (s *AwsSqsSource) GetGroupVersionKind() schema.GroupVersionKind {
+	return SchemeGroupVersion.WithKind("AwsSqsSource")
+}
+
 // MarkSink sets the condition that the source has a sink configured.
 func (s *AwsSqsSourceStatus) MarkSink(uri string) {
-	s.SinkURI = uri
 	if len(uri) > 0 {
-		condSet.Manage(s).MarkTrue(AwsSqsSourceConditionSinkProvided)
+		if u, err := apis.ParseURL(uri); err != nil {
+			s.SinkURI = nil
+			condSet.Manage(s).MarkUnknown(AwsSqsSourceConditionSinkProvided,
+				"SinkEmpty", "Sink resolving resulted in an error. %s", err.Error())
+		} else {
+			s.SinkURI = u
+			condSet.Manage(s).MarkTrue(AwsSqsSourceConditionSinkProvided)
+		}
 	} else {
+		s.SinkURI = nil
 		condSet.Manage(s).MarkUnknown(AwsSqsSourceConditionSinkProvided,
-			"SinkEmpty", "Sink has resolved to empty.%s", "")
+			"SinkEmpty", "Sink has resolved to empty.")
 	}
 }
 
@@ -146,16 +151,6 @@ func (s *AwsSqsSourceStatus) MarkDeploying(reason, messageFormat string, message
 // MarkNotDeployed sets the condition that the source has not been deployed.
 func (s *AwsSqsSourceStatus) MarkNotDeployed(reason, messageFormat string, messageA ...interface{}) {
 	condSet.Manage(s).MarkFalse(AwsSqsSourceConditionDeployed, reason, messageFormat, messageA...)
-}
-
-// MarkEventTypes sets the condition that the source has set its event types.
-func (s *AwsSqsSourceStatus) MarkEventTypes() {
-	condSet.Manage(s).MarkTrue(AwsSqsSourceConditionEventTypesProvided)
-}
-
-// MarkNoEventTypes sets the condition that the source does not its event types configured.
-func (s *AwsSqsSourceStatus) MarkNoEventTypes(reason, messageFormat string, messageA ...interface{}) {
-	condSet.Manage(s).MarkFalse(AwsSqsSourceConditionEventTypesProvided, reason, messageFormat, messageA...)
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

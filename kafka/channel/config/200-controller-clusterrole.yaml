@@ -95,3 +95,18 @@ rules:
       - deployments
       - deployments/status
     verbs: *everything
+  - apiGroups:
+      - "" # Core API group.
+    resources:
+      - serviceaccounts
+    verbs: *everything
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - rolebindings
+    verbs: *everything
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs: *everything
