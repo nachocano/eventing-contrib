@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Knative Authors
+Copyright 2019 The Knative Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package v1alpha1 contains API Schema definitions for the sources v1alpha1 API group
+// +k8s:openapi-gen=true
+// +k8s:deepcopy-gen=package,register
+// +k8s:conversion-gen=knative.dev/eventing-contrib/container/pkg/apis/sources
+// +k8s:defaulter-gen=TypeMeta
+// +groupName=sources.knative.dev
 package v1alpha1
-
-import (
-	"context"
-)
-
-func (s *ContainerSource) SetDefaults(ctx context.Context) {
-	s.Spec.SetDefaults(ctx)
-}
-
-func (ss *ContainerSourceSpec) SetDefaults(ctx context.Context) {
-	// noop
-}

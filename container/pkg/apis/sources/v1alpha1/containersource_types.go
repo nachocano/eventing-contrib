@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"knative.dev/pkg/apis"
+	"knative.dev/pkg/apis/duck"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 	"knative.dev/pkg/kmeta"
 )
@@ -47,6 +48,8 @@ var (
 
 	// Check that ContainerSource can return its spec untyped.
 	_ apis.HasSpec = (*ContainerSource)(nil)
+
+	_ = duck.VerifyType(&ContainerSource{}, &duckv1.Conditions{})
 )
 
 // ContainerSourceSpec defines the desired state of ContainerSource
