@@ -19,14 +19,44 @@ package v1alpha1
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp/cmpopts"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
 )
 
+var (
+	availableDeployment = &appsv1.Deployment{
+		Status: appsv1.DeploymentStatus{
+			Conditions: []appsv1.DeploymentCondition{
+				{
+					Type:   appsv1.DeploymentAvailable,
+					Status: corev1.ConditionTrue,
+				},
+			},
+		},
+	}
+
+	unavailableDeployment = &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "unavailable",
+		},
+		Status: appsv1.DeploymentStatus{
+			Conditions: []appsv1.DeploymentCondition{
+				{
+					Type:   appsv1.DeploymentAvailable,
+					Status: corev1.ConditionFalse,
+				},
+			},
+		},
+	}
+)
+
 func TestContainerSourceStatusIsReady(t *testing.T) {
+	sink, _ := apis.ParseURL("uri://example")
+
 	tests := []struct {
 		name string
 		s    *ContainerSourceStatus
@@ -48,7 +78,7 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkDeployed()
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		want: false,
@@ -57,7 +87,7 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
+			s.MarkSink(sink)
 			return s
 		}(),
 		want: false,
@@ -66,8 +96,8 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		want: true,
@@ -76,20 +106,9 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			s.MarkNoSink("Testing", "")
-			return s
-		}(),
-		want: false,
-	}, {
-		name: "mark sink and deployed then deploying",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkDeploying("Testing", "")
 			return s
 		}(),
 		want: false,
@@ -98,31 +117,19 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkNotDeployed("Testing", "")
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
+			s.PropagateDeploymentAvailability(unavailableDeployment)
 			return s
 		}(),
 		want: false,
-	}, {
-		name: "mark sink and not deployed then deploying then deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkNotDeployed("MarkNotDeployed", "")
-			s.MarkDeploying("MarkDeploying", "")
-			s.MarkDeployed()
-			return s
-		}(),
-		want: true,
 	}, {
 		name: "mark sink empty and deployed",
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
+			s.MarkSink(nil)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		want: false,
@@ -131,9 +138,9 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
-			s.MarkSink("uri://example")
+			s.MarkSink(nil)
+			s.PropagateDeploymentAvailability(availableDeployment)
+			s.MarkSink(sink)
 			return s
 		}(),
 		want: true,
@@ -150,6 +157,8 @@ func TestContainerSourceStatusIsReady(t *testing.T) {
 }
 
 func TestContainerSourceStatusGetCondition(t *testing.T) {
+	sink, _ := apis.ParseURL("uri://example")
+
 	tests := []struct {
 		name      string
 		s         *ContainerSourceStatus
@@ -177,7 +186,7 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkDeployed()
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
@@ -190,7 +199,7 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
+			s.MarkSink(sink)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
@@ -203,8 +212,8 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
@@ -217,8 +226,8 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			s.MarkNoSink("Testing", "hi%s", "")
 			return s
 		}(),
@@ -230,62 +239,28 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 			Message: "hi",
 		},
 	}, {
-		name: "mark sink and deployed then deploying",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkDeploying("Testing", "hi%s", "")
-			return s
-		}(),
-		condQuery: ContainerConditionReady,
-		want: &apis.Condition{
-			Type:    ContainerConditionReady,
-			Status:  corev1.ConditionUnknown,
-			Reason:  "Testing",
-			Message: "hi",
-		},
-	}, {
 		name: "mark sink and deployed then not deployed",
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkNotDeployed("Testing", "hi%s", "")
+			s.MarkSink(sink)
+			s.PropagateDeploymentAvailability(availableDeployment)
+			s.PropagateDeploymentAvailability(unavailableDeployment)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
 		want: &apis.Condition{
 			Type:    ContainerConditionReady,
 			Status:  corev1.ConditionFalse,
-			Reason:  "Testing",
-			Message: "hi",
-		},
-	}, {
-		name: "mark sink and not deployed then deploying then deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkNotDeployed("MarkNotDeployed", "%s", "")
-			s.MarkDeploying("MarkDeploying", "%s", "")
-			s.MarkDeployed()
-			return s
-		}(),
-		condQuery: ContainerConditionReady,
-		want: &apis.Condition{
-			Type:   ContainerConditionReady,
-			Status: corev1.ConditionTrue,
+			Message: "unavailable",
 		},
 	}, {
 		name: "mark sink empty and deployed",
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
+			s.MarkSink(nil)
+			s.PropagateDeploymentAvailability(availableDeployment)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
@@ -300,9 +275,9 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 		s: func() *ContainerSourceStatus {
 			s := &ContainerSourceStatus{}
 			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
-			s.MarkSink("uri://example")
+			s.MarkSink(nil)
+			s.PropagateDeploymentAvailability(availableDeployment)
+			s.MarkSink(sink)
 			return s
 		}(),
 		condQuery: ContainerConditionReady,
@@ -319,129 +294,6 @@ func TestContainerSourceStatusGetCondition(t *testing.T) {
 				"LastTransitionTime", "Severity")
 			if diff := cmp.Diff(test.want, got, ignoreTime); diff != "" {
 				t.Errorf("unexpected condition (-want, +got) = %v", diff)
-			}
-		})
-	}
-}
-
-func TestContainerSourceStatusIsDeployed(t *testing.T) {
-	tests := []struct {
-		name string
-		s    *ContainerSourceStatus
-		want bool
-	}{{
-		name: "uninitialized",
-		s:    &ContainerSourceStatus{},
-		want: false,
-	}, {
-		name: "initialized",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			return s
-		}(),
-		want: false,
-	}, {
-		name: "mark deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkDeployed()
-			return s
-		}(),
-		want: true,
-	}, {
-		name: "mark sink",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			return s
-		}(),
-		want: false,
-	}, {
-		name: "mark sink and deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			return s
-		}(),
-		want: true,
-	}, {
-		name: "mark sink and deployed then no sink",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkNoSink("Testing", "")
-			return s
-		}(),
-		want: true,
-	}, {
-		name: "mark sink and deployed then deploying",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkDeploying("Testing", "")
-			return s
-		}(),
-		want: false,
-	}, {
-		name: "mark sink and deployed then not deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkDeployed()
-			s.MarkNotDeployed("Testing", "")
-			return s
-		}(),
-		want: false,
-	}, {
-		name: "mark sink and not deployed then deploying then deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("uri://example")
-			s.MarkNotDeployed("MarkNotDeployed", "")
-			s.MarkDeploying("MarkDeploying", "")
-			s.MarkDeployed()
-			return s
-		}(),
-		want: true,
-	}, {
-		name: "mark sink empty and deployed",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
-			return s
-		}(),
-		want: true,
-	}, {
-		name: "mark sink empty and deployed then sink",
-		s: func() *ContainerSourceStatus {
-			s := &ContainerSourceStatus{}
-			s.InitializeConditions()
-			s.MarkSink("")
-			s.MarkDeployed()
-			s.MarkSink("uri://example")
-			return s
-		}(),
-		want: true,
-	}}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := test.s.IsDeployed()
-			if diff := cmp.Diff(test.want, got); diff != "" {
-				t.Errorf("%s: unexpected condition (-want, +got) = %v", test.name, diff)
 			}
 		})
 	}

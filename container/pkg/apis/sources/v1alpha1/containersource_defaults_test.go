@@ -24,5 +24,5 @@ import (
 // No-op test because method does nothing.
 func TestContainerSourceDefaults(t *testing.T) {
 	s := ContainerSource{}
-	s.SetDefaults(context.TODO())
+	s.SetDefaults(context.Background())
 }

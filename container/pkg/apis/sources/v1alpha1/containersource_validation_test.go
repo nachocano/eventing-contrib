@@ -34,20 +34,23 @@ func TestContainerSourceValidation(t *testing.T) {
 	}{{
 		name: "valid spec",
 		spec: ContainerSourceSpec{
-			Template: &corev1.PodTemplateSpec{},
-			Sink: &duckv1.Destination{
-				Ref: &duckv1.KReference{
-					APIVersion: "v1alpha1",
-					Kind:       "broker",
-					Name:       "default",
+			Template: corev1.PodTemplateSpec{},
+			SourceSpec: duckv1.SourceSpec{
+				Sink: duckv1.Destination{
+					Ref: &duckv1.KReference{
+						APIVersion: "v1alpha1",
+						Kind:       "broker",
+						Name:       "default",
+					},
 				},
 			},
 		},
 		want: nil,
 	}, {
-		name: "empty sink",
+		name:
+		"empty sink",
 		spec: ContainerSourceSpec{
-			Template: &corev1.PodTemplateSpec{},
+			Template: corev1.PodTemplateSpec{},
 		},
 		want: func() *apis.FieldError {
 			var errs *apis.FieldError

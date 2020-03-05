@@ -14,22 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package resources
 
 import (
-	"context"
-
-	"knative.dev/pkg/apis"
+	"fmt"
+	"knative.dev/eventing-contrib/container/pkg/apis/sources/v1alpha1"
+	"knative.dev/eventing/pkg/utils"
 )
 
-func (c *ContainerSource) Validate(ctx context.Context) *apis.FieldError {
-	return c.Spec.Validate(ctx).ViaField("spec")
-}
-
-func (cs *ContainerSourceSpec) Validate(ctx context.Context) *apis.FieldError {
-	var errs *apis.FieldError
-	if fe := cs.Sink.Validate(ctx); fe != nil {
-		errs = errs.Also(fe.ViaField("sink"))
-	}
-	return errs
+func GenerateName(src *v1alpha1.ContainerSource) string {
+	return utils.GenerateFixedName(src, fmt.Sprintf("containersource-%s", src.Name))
 }

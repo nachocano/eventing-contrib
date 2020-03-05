@@ -14,22 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
-
-import (
-	"context"
-
-	"knative.dev/pkg/apis"
-)
-
-func (c *ContainerSource) Validate(ctx context.Context) *apis.FieldError {
-	return c.Spec.Validate(ctx).ViaField("spec")
-}
-
-func (cs *ContainerSourceSpec) Validate(ctx context.Context) *apis.FieldError {
-	var errs *apis.FieldError
-	if fe := cs.Sink.Validate(ctx); fe != nil {
-		errs = errs.Also(fe.ViaField("sink"))
-	}
-	return errs
-}
+// Package reconciler implements the ContainerSource controller.
+package reconciler

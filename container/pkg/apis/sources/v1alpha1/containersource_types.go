@@ -31,7 +31,7 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:defaulter-gen=true
 
-// ContainerSource is the Schema for the containersources API
+// ContainerSource is the Schema for the containersources API.
 type ContainerSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -47,14 +47,17 @@ var (
 	_                    = duck.VerifyType(&ContainerSource{}, &duckv1.Conditions{})
 )
 
-// ContainerSourceSpec defines the desired state of ContainerSource
+// ContainerSourceSpec defines the desired state of ContainerSource.
 type ContainerSourceSpec struct {
-	// Template describes the pods that will be created
-	// +optional
-	Template *corev1.PodTemplateSpec `json:"template,omitempty"`
+	// inherits duck/v1 SourceSpec, which currently provides:
+	// * Sink - a reference to an object that will resolve to a domain name or
+	//   a URI directly to use as the sink.
+	// * CloudEventOverrides - defines overrides to control the output format
+	//   and modifications of the event sent to the sink.
+	duckv1.SourceSpec `json:",inline"`
 
-	// Sink is a reference to an object that will resolve to a domain name to use as the sink.
-	Sink *duckv1.Destination `json:"sink,omitempty"`
+	// Template describes the pods that will be created
+	Template corev1.PodTemplateSpec `json:"template"`
 }
 
 // GetGroupVersionKind returns the GroupVersionKind.
@@ -62,21 +65,21 @@ func (s *ContainerSource) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind("ContainerSource")
 }
 
-// ContainerSourceStatus defines the observed state of ContainerSource
+// ContainerSourceStatus defines the observed state of ContainerSource.
 type ContainerSourceStatus struct {
-	// inherits duck/v1 Status, which currently provides:
-	// * ObservedGeneration - the 'Generation' of the Service that was last processed by the controller.
-	// * Conditions - the latest available observations of a resource's current state.
-	duckv1.Status `json:",inline"`
-
-	// SinkURI is the current active sink URI that has been configured for the ContainerSource.
-	// +optional
-	SinkURI string `json:"sinkUri,omitempty"`
+	// inherits duck/v1 SourceStatus, which currently provides:
+	// * ObservedGeneration - the 'Generation' of the Service that was last
+	//   processed by the controller.
+	// * Conditions - the latest available observations of a resource's current
+	//   state.
+	// * SinkURI - the current active sink URI that has been configured for the
+	//   Source.
+	duckv1.SourceStatus `json:",inline"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ContainerSourceList contains a list of ContainerSource
+// ContainerSourceList contains a list of ContainerSource.
 type ContainerSourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
