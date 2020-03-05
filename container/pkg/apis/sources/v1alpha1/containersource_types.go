@@ -41,15 +41,10 @@ type ContainerSource struct {
 }
 
 var (
-	_ runtime.Object = (*ContainerSource)(nil)
-
-	// Check that we can create OwnerReferences to a ContainerSource.
+	_ runtime.Object     = (*ContainerSource)(nil)
 	_ kmeta.OwnerRefable = (*ContainerSource)(nil)
-
-	// Check that ContainerSource can return its spec untyped.
-	_ apis.HasSpec = (*ContainerSource)(nil)
-
-	_ = duck.VerifyType(&ContainerSource{}, &duckv1.Conditions{})
+	_ apis.HasSpec       = (*ContainerSource)(nil)
+	_                    = duck.VerifyType(&ContainerSource{}, &duckv1.Conditions{})
 )
 
 // ContainerSourceSpec defines the desired state of ContainerSource
