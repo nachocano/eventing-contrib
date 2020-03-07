@@ -15,27 +15,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: couchdb-webhook
+  name: containersource-webhook
   namespace: knative-sources
   labels:
-    contrib.eventing.knative.dev/release: devel
+    eventing.knative.dev/release: devel
 spec:
   replicas: 1
   selector:
     matchLabels: &labels
-      app: couchdb-webhook
-      role: couchdb-webhook
+      app: containersource-webhook
+      role: containersource-webhook
   template:
     metadata:
       annotations:
         sidecar.istio.io/inject: "false"
       labels: *labels
     spec:
-      serviceAccountName: couchdb-webhook
+      serviceAccountName: containersource-webhook
       containers:
-      - name: couchdb-webhook
+      - name: containersource-webhook
         terminationMessagePolicy: FallbackToLogsOnError
-        image: knative.dev/eventing-contrib/couchdb/source/cmd/webhook
+        image: knative.dev/eventing-contrib/container/cmd/webhook
         env:
           - name: SYSTEM_NAMESPACE
             valueFrom:
@@ -44,10 +44,9 @@ spec:
           - name: CONFIG_LOGGING_NAME
             value: config-logging
           - name: METRICS_DOMAIN
-            value: knative.dev/eventing
+            value: knative.dev/sources
           - name: WEBHOOK_NAME
-            value: couchdb-webhook
+            value: containersource-webhook
         ports:
           - containerPort: 9090
             name: metrics
-        # TODO set proper resource limits.

@@ -36,7 +36,7 @@ spec:
       containers:
       - name: containersource-controller
         terminationMessagePolicy: FallbackToLogsOnError
-        image: ko://knative.dev/eventing-contrib/containersource/cmd/controller
+        image: ko://knative.dev/eventing-contrib/container/cmd/controller
 
         resources:
           requests:
@@ -60,11 +60,11 @@ spec:
         - name: CONFIG_LEADERELECTION_NAME
           value: config-leader-election-containersource
 
-      securityContext:
-        allowPrivilegeEscalation: false
+        securityContext:
+          allowPrivilegeEscalation: false
 
-      ports:
-        - name: metrics
-          containerPort: 9090
-        - name: profiling
-          containerPort: 8008
+        ports:
+          - name: metrics
+            containerPort: 9090
+          - name: profiling
+            containerPort: 8008
