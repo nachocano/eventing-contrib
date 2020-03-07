@@ -59,8 +59,6 @@ spec:
           value: knative.dev/sources
         - name: CONFIG_LEADERELECTION_NAME
           value: config-leader-election-containersource
-        - name: CONTAINERSOURCE_RA_IMAGE
-          value: ko://knative.dev/eventing-contrib/container/cmd/receive_adapter
 
       securityContext:
         allowPrivilegeEscalation: false
