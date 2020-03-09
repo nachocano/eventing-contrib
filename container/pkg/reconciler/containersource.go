@@ -22,8 +22,10 @@ import (
 	"reflect"
 	"time"
 
+	"knative.dev/pkg/apis"
 	"knative.dev/pkg/resolver"
 
+	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -31,8 +33,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
-
-	"go.uber.org/zap"
 	"knative.dev/eventing/pkg/reconciler"
 	"knative.dev/pkg/controller"
 
@@ -117,7 +117,7 @@ func (r *Reconciler) reconcile(ctx context.Context, source *v1alpha1.ContainerSo
 	source.Status.InitializeConditions()
 	source.Status.ObservedGeneration = source.Generation
 
-	sinkURI, err := r.sinkResolver.URIFromDestinationV1(source.Spec.Sink, source)
+	sinkURI, err := r.reconcileSink(ctx, source)
 	if err != nil {
 		source.Status.MarkNoSink("NotFound", `Couldn't get Sink URI from %+v`, source.Spec.Sink)
 		return fmt.Errorf("getting sink URI: %v", err)
@@ -130,6 +130,19 @@ func (r *Reconciler) reconcile(ctx context.Context, source *v1alpha1.ContainerSo
 	}
 	source.Status.PropagateDeploymentAvailability(ra)
 	return nil
+}
+
+func (r *Reconciler) reconcileSink(ctx context.Context, src *v1alpha1.ContainerSource) (*apis.URL, error) {
+	dest := src.Spec.Sink.DeepCopy()
+	if dest.Ref != nil {
+		// To call URIFromDestinationV1(), dest.Ref must have a Namespace. If there is
+		// no Namespace defined in dest.Ref, we will use the Namespace of the source
+		// as the Namespace of dest.Ref.
+		if dest.Ref.Namespace == "" {
+			dest.Ref.Namespace = src.GetNamespace()
+		}
+	}
+	return r.sinkResolver.URIFromDestinationV1(*dest, src)
 }
 
 func (r *Reconciler) reconcileReceiveAdapter(ctx context.Context, src *v1alpha1.ContainerSource) (*appsv1.Deployment, error) {

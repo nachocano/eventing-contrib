@@ -22,5 +22,5 @@ import (
 )
 
 func main() {
-	sharedmain.Main("controller", reconciler.NewController)
+	sharedmain.Main("containersource-controller", reconciler.NewController)
 }
