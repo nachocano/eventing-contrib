@@ -28,16 +28,6 @@ const (
 	sourceLabelKey = "sources.knative.dev/containerSource"
 )
 
-type ContainerArguments struct {
-	Source      *v1alpha1.ContainerSource
-	Name        string
-	Namespace   string
-	Template    *corev1.PodTemplateSpec
-	Sink        string
-	Annotations map[string]string
-	Labels      map[string]string
-}
-
 func MakeDeployment(src *v1alpha1.ContainerSource) *appsv1.Deployment {
 	containers := make([]corev1.Container, 0)
 	for _, c := range src.Spec.Template.Spec.Containers {
@@ -67,13 +57,13 @@ func MakeDeployment(src *v1alpha1.ContainerSource) *appsv1.Deployment {
 					sourceLabelKey: src.Name,
 				},
 			},
-			Template: *template,
+			Template: src.Spec.Template,
 		},
 	}
 
 	deploy.Spec.Template.Annotations = src.Annotations
 	// Then wire through any labels from the source. Do not allow to override
-	// our source name. This seems like it would be way errorprone by allowing
+	// our source name. This seems like it would be way error-prone by allowing
 	// the matchlabels then to not match, or we'd have to force them to match, etc.
 	// just don't allow it.
 	for k, v := range src.Labels {
