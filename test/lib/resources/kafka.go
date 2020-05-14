@@ -22,9 +22,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/eventing/test/lib/resources"
-	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
+	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
 	pkgTest "knative.dev/pkg/test"
+	"knative.dev/pkg/tracker"
 
+	kafkabindingv1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/bindings/v1alpha1"
 	kafkasourcev1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1alpha1"
 )
 
@@ -81,11 +84,34 @@ func KafkaSource(bootstrapServer string, topicName string, ref *corev1.ObjectRef
 			Name: "test-kafka-source",
 		},
 		Spec: kafkasourcev1alpha1.KafkaSourceSpec{
-			BootstrapServers: bootstrapServer,
-			Topics:           topicName,
-			ConsumerGroup:    "test-consumer-group",
-			Sink: &duckv1beta1.Destination{
-				Ref: ref,
+			KafkaAuthSpec: kafkabindingv1alpha1.KafkaAuthSpec{
+				BootstrapServers: []string{bootstrapServer},
+			},
+			Topics:        []string{topicName},
+			ConsumerGroup: "test-consumer-group",
+			Sink: &duckv1.Destination{
+				Ref: &duckv1.KReference{
+					APIVersion: ref.APIVersion,
+					Kind:       ref.Kind,
+					Name:       ref.Name,
+					Namespace:  ref.Namespace,
+				},
+			},
+		},
+	}
+}
+
+func KafkaBinding(bootstrapServer string, ref *tracker.Reference) *kafkabindingv1alpha1.KafkaBinding {
+	return &kafkabindingv1alpha1.KafkaBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-kafka-binding",
+		},
+		Spec: kafkabindingv1alpha1.KafkaBindingSpec{
+			KafkaAuthSpec: kafkabindingv1alpha1.KafkaAuthSpec{
+				BootstrapServers: []string{bootstrapServer},
+			},
+			BindingSpec: duckv1alpha1.BindingSpec{
+				Subject: *ref,
 			},
 		},
 	}

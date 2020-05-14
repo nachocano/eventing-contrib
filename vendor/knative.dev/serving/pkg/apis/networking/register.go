@@ -44,7 +44,7 @@ const (
 	SKSLabelKey = GroupName + "/serverlessservice"
 
 	// ServiceTypeKey is the label key attached to a service specifying the type of service.
-	// e.g. Public, Metrics
+	// e.g. Public, Private.
 	ServiceTypeKey = GroupName + "/serviceType"
 
 	// OriginSecretNameLabelKey is the label key attached to the TLS secret to indicate
@@ -73,9 +73,13 @@ const (
 	// ActivatorServiceName is the name of the activator Kubernetes service.
 	ActivatorServiceName = "activator-service"
 
+	// DeprecatedDisableWildcardCertLabelKey is the deprecated label key attached to a namespace to indicate that
+	// a wildcard certificate should be not created for it.
+	DeprecatedDisableWildcardCertLabelKey = GroupName + "/disableWildcardCert"
+
 	// DisableWildcardCertLabelKey is the label key attached to a namespace to indicate that
 	// a wildcard certificate should be not created for it.
-	DisableWildcardCertLabelKey = GroupName + "/disableWildcardCert"
+	DisableWildcardCertLabelKey = "networking.knative.dev/disableWildcardCert"
 
 	// WildcardCertDomainLabelKey is the label key attached to a certificate to indicate the
 	// domain for which it was issued.
@@ -98,10 +102,6 @@ const (
 	// ServiceTypePublic is the label value for externally reachable
 	// services for user applications.
 	ServiceTypePublic ServiceType = "Public"
-	// ServiceTypeMetrics is the label value for Metrics services. Such services
-	// are used for metric scraping.
-	// TODO(5900): Remove after 0.12 is cut.
-	ServiceTypeMetrics ServiceType = "Metrics"
 )
 
 // Pseudo-constants

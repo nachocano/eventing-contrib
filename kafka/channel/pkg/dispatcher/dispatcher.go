@@ -19,26 +19,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	nethttp "net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/Shopify/sarama"
-	cloudevents "github.com/cloudevents/sdk-go"
-	. "github.com/cloudevents/sdk-go/pkg/cloudevents"
+	"github.com/cloudevents/sdk-go/v2/binding"
+	protocolkafka "github.com/cloudevents/sdk-go/v2/protocol/kafka_sarama"
 	"github.com/google/go-cmp/cmp"
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/types"
+	eventingduck "knative.dev/eventing/pkg/apis/duck/v1beta1"
+	eventingchannels "knative.dev/eventing/pkg/channel"
+	"knative.dev/eventing/pkg/channel/multichannelfanout"
+	"knative.dev/eventing/pkg/kncloudevents"
 
 	"knative.dev/eventing-contrib/kafka/channel/pkg/utils"
 	"knative.dev/eventing-contrib/kafka/common/pkg/kafka"
-	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
-	eventingchannels "knative.dev/eventing/pkg/channel"
-	"knative.dev/eventing/pkg/channel/multichannelfanout"
-	"knative.dev/eventing/pkg/channel/swappable"
-	"knative.dev/eventing/pkg/kncloudevents"
-	"knative.dev/pkg/logging"
-	"knative.dev/pkg/tracing"
 )
 
 type KafkaDispatcher struct {
@@ -48,13 +46,14 @@ type KafkaDispatcher struct {
 	// hostToChannelMapLock is used to update hostToChannelMap
 	hostToChannelMapLock sync.Mutex
 
-	handler    *swappable.Handler
-	ceClient   cloudevents.Client
-	receiver   *eventingchannels.EventReceiver
-	dispatcher *eventingchannels.EventDispatcher
+	messageSender *kncloudevents.HttpMessageSender
+	receiver      *eventingchannels.MessageReceiver
+	dispatcher    *eventingchannels.MessageDispatcherImpl
 
-	kafkaAsyncProducer  sarama.AsyncProducer
-	kafkaConsumerGroups map[eventingchannels.ChannelReference]map[subscription]sarama.ConsumerGroup
+	kafkaAsyncProducer   sarama.AsyncProducer
+	channelSubscriptions map[eventingchannels.ChannelReference][]types.UID
+	subsConsumerGroups   map[types.UID]sarama.ConsumerGroup
+	subscriptions        map[types.UID]subscription
 	// consumerUpdateLock must be used to update kafkaConsumers
 	consumerUpdateLock   sync.Mutex
 	kafkaConsumerFactory kafka.KafkaConsumerGroupFactory
@@ -63,11 +62,64 @@ type KafkaDispatcher struct {
 	logger    *zap.Logger
 }
 
+func NewDispatcher(ctx context.Context, args *KafkaDispatcherArgs) (*KafkaDispatcher, error) {
+	conf := sarama.NewConfig()
+	conf.Version = sarama.V2_0_0_0
+	conf.ClientID = args.ClientID
+	conf.Consumer.Return.Errors = true // Returns the errors in ConsumerGroup#Errors() https://godoc.org/github.com/Shopify/sarama#ConsumerGroup
+
+	producer, err := sarama.NewAsyncProducer(args.Brokers, conf)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create kafka producer: %v", err)
+	}
+
+	messageSender, err := kncloudevents.NewHttpMessageSender(args.KnCEConnectionArgs, "")
+	if err != nil {
+		args.Logger.Fatal("failed to create message sender", zap.Error(err))
+	}
+
+	dispatcher := &KafkaDispatcher{
+		dispatcher:           eventingchannels.NewMessageDispatcher(args.Logger),
+		kafkaConsumerFactory: kafka.NewConsumerGroupFactory(args.Brokers, conf),
+		channelSubscriptions: make(map[eventingchannels.ChannelReference][]types.UID),
+		subsConsumerGroups:   make(map[types.UID]sarama.ConsumerGroup),
+		subscriptions:        make(map[types.UID]subscription),
+		kafkaAsyncProducer:   producer,
+		logger:               args.Logger,
+		messageSender:        messageSender,
+		topicFunc:            args.TopicFunc,
+	}
+	receiverFunc, err := eventingchannels.NewMessageReceiver(
+		func(ctx context.Context, channel eventingchannels.ChannelReference, message binding.Message, transformers []binding.Transformer, _ nethttp.Header) error {
+			kafkaProducerMessage := sarama.ProducerMessage{
+				Topic: dispatcher.topicFunc(utils.KafkaChannelSeparator, channel.Namespace, channel.Name),
+			}
+
+			dispatcher.logger.Debug("Received a new message from MessageReceiver, dispatching to Kafka", zap.Any("channel", channel))
+			err := protocolkafka.WriteProducerMessage(ctx, message, &kafkaProducerMessage, transformers...)
+			if err != nil {
+				return err
+			}
+
+			dispatcher.kafkaAsyncProducer.Input() <- &kafkaProducerMessage
+			return nil
+		},
+		args.Logger,
+		eventingchannels.ResolveMessageChannelFromHostHeader(dispatcher.getChannelReferenceFromHost))
+	if err != nil {
+		return nil, err
+	}
+
+	dispatcher.receiver = receiverFunc
+	dispatcher.setConfig(&multichannelfanout.Config{})
+	dispatcher.setHostToChannelMap(map[string]eventingchannels.ChannelReference{})
+	return dispatcher, nil
+}
+
 type TopicFunc func(separator, namespace, name string) string
 
 type KafkaDispatcherArgs struct {
 	KnCEConnectionArgs *kncloudevents.ConnectionArgs
-	Handler            *swappable.Handler
 	ClientID           string
 	Brokers            []string
 	TopicFunc          TopicFunc
@@ -75,24 +127,52 @@ type KafkaDispatcherArgs struct {
 }
 
 type consumerMessageHandler struct {
+	logger     *zap.Logger
 	sub        subscription
-	dispatcher *eventingchannels.EventDispatcher
+	dispatcher *eventingchannels.MessageDispatcherImpl
 }
 
-func (c consumerMessageHandler) Handle(ctx context.Context, message *sarama.ConsumerMessage) (bool, error) {
-	event := fromKafkaMessage(ctx, message)
-	return true, c.dispatcher.DispatchEventWithDelivery(ctx, *event, c.sub.SubscriberURI, c.sub.ReplyURI, &c.sub.Delivery)
+func (c consumerMessageHandler) Handle(ctx context.Context, consumerMessage *sarama.ConsumerMessage) (bool, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Warn("Panic happened while handling a message",
+				zap.String("topic", consumerMessage.Topic),
+				zap.String("sub", string(c.sub.UID)),
+				zap.Any("panic value", r),
+			)
+		}
+	}()
+	message := protocolkafka.NewMessageFromConsumerMessage(consumerMessage)
+	if message.ReadEncoding() == binding.EncodingUnknown {
+		return false, errors.New("received a message with unknown encoding")
+	}
+	var destination *url.URL
+	if !c.sub.SubscriberURI.IsEmpty() {
+		destination = c.sub.SubscriberURI.URL()
+	}
+	var reply *url.URL
+	if !c.sub.ReplyURI.IsEmpty() {
+		reply = c.sub.ReplyURI.URL()
+	}
+	var deadLetter *url.URL
+	if c.sub.Delivery != nil && c.sub.Delivery.DeadLetterSink != nil && !c.sub.Delivery.DeadLetterSink.URI.IsEmpty() {
+		deadLetter = c.sub.Delivery.DeadLetterSink.URI.URL()
+	}
+	c.logger.Debug("Going to dispatch the message",
+		zap.String("topic", consumerMessage.Topic),
+		zap.String("sub", string(c.sub.UID)),
+	)
+	err := c.dispatcher.DispatchMessage(context.Background(), message, nil, destination, reply, deadLetter)
+	// NOTE: only return `true` here if DispatchMessage actually delivered the message.
+	return err == nil, err
 }
 
 var _ kafka.KafkaConsumerHandler = (*consumerMessageHandler)(nil)
 
 type subscription struct {
-	Namespace     string
-	Name          string
-	UID           string
-	SubscriberURI string
-	ReplyURI      string
-	Delivery      eventingchannels.DeliveryOptions
+	eventingduck.SubscriberSpec
+	Namespace string
+	Name      string
 }
 
 // configDiff diffs the new config with the existing config. If there are no differences, then the
@@ -111,7 +191,7 @@ func (d *KafkaDispatcher) UpdateKafkaConsumers(config *multichannelfanout.Config
 	d.consumerUpdateLock.Lock()
 	defer d.consumerUpdateLock.Unlock()
 
-	newSubs := make(map[subscription]bool)
+	var newSubs []types.UID
 	failedToSubscribe := make(map[eventingduck.SubscriberSpec]error)
 	for _, cc := range config.ChannelConfigs {
 		channelRef := eventingchannels.ChannelReference{
@@ -119,27 +199,47 @@ func (d *KafkaDispatcher) UpdateKafkaConsumers(config *multichannelfanout.Config
 			Namespace: cc.Namespace,
 		}
 		for _, subSpec := range cc.FanoutConfig.Subscriptions {
-			// TODO: use better way to get the provided Name/Namespce for the Subscription
-			// we NEED this for better consumer groups
 			sub := newSubscription(subSpec, string(subSpec.UID), cc.Namespace)
-			if _, ok := d.kafkaConsumerGroups[channelRef][sub]; !ok {
+			newSubs = append(newSubs, sub.UID)
+
+			// Check if sub already exists
+			exists := false
+			for _, s := range d.channelSubscriptions[channelRef] {
+				if s == sub.UID {
+					exists = true
+				}
+			}
+
+			if !exists {
 				// only subscribe when not exists in channel-subscriptions map
 				// do not need to resubscribe every time channel fanout config is updated
 				if err := d.subscribe(channelRef, sub); err != nil {
 					failedToSubscribe[subSpec] = err
 				}
 			}
-			newSubs[sub] = true
 		}
 	}
 
+	d.logger.Debug("Number of new subs", zap.Any("subs", len(newSubs)))
+	d.logger.Debug("Number of subs failed to subscribe", zap.Any("subs", len(failedToSubscribe)))
+
 	// Unsubscribe and close consumer for any deleted subscriptions
-	for channelRef, subMap := range d.kafkaConsumerGroups {
-		for sub := range subMap {
-			if ok := newSubs[sub]; !ok {
-				d.unsubscribe(channelRef, sub)
+	for channelRef, subs := range d.channelSubscriptions {
+		for _, oldSub := range subs {
+			removedSub := true
+			for _, s := range newSubs {
+				if s == oldSub {
+					removedSub = false
+				}
+			}
+
+			if removedSub {
+				if err := d.unsubscribe(channelRef, d.subscriptions[oldSub]); err != nil {
+					return nil, err
+				}
 			}
 		}
+		d.channelSubscriptions[channelRef] = newSubs
 	}
 	return failedToSubscribe, nil
 }
@@ -202,7 +302,7 @@ func (d *KafkaDispatcher) Start(ctx context.Context) error {
 		}
 	}()
 
-	return d.ceClient.StartReceiver(ctx, d.receiver.ServeHTTP)
+	return d.receiver.Start(ctx)
 }
 
 // subscribe reads kafkaConsumers which gets updated in UpdateConfig in a separate go-routine.
@@ -213,7 +313,7 @@ func (d *KafkaDispatcher) subscribe(channelRef eventingchannels.ChannelReference
 	topicName := d.topicFunc(utils.KafkaChannelSeparator, channelRef.Namespace, channelRef.Name)
 	groupID := fmt.Sprintf("kafka.%s.%s.%s", sub.Namespace, channelRef.Name, sub.Name)
 
-	handler := &consumerMessageHandler{sub, d.dispatcher}
+	handler := &consumerMessageHandler{d.logger, sub, d.dispatcher}
 
 	consumerGroup, err := d.kafkaConsumerFactory.StartConsumerGroup(groupID, []string{topicName}, d.logger, handler)
 
@@ -231,12 +331,9 @@ func (d *KafkaDispatcher) subscribe(channelRef eventingchannels.ChannelReference
 		}
 	}()
 
-	consumerGroupMap, ok := d.kafkaConsumerGroups[channelRef]
-	if !ok {
-		consumerGroupMap = make(map[subscription]sarama.ConsumerGroup)
-		d.kafkaConsumerGroups[channelRef] = consumerGroupMap
-	}
-	consumerGroupMap[sub] = consumerGroup
+	d.channelSubscriptions[channelRef] = append(d.channelSubscriptions[channelRef], sub.UID)
+	d.subscriptions[sub.UID] = sub
+	d.subsConsumerGroups[sub.UID] = consumerGroup
 
 	return nil
 }
@@ -245,8 +342,18 @@ func (d *KafkaDispatcher) subscribe(channelRef eventingchannels.ChannelReference
 // unsubscribe must be called under updateLock.
 func (d *KafkaDispatcher) unsubscribe(channel eventingchannels.ChannelReference, sub subscription) error {
 	d.logger.Info("Unsubscribing from channel", zap.Any("channel", channel), zap.Any("subscription", sub))
-	if consumer, ok := d.kafkaConsumerGroups[channel][sub]; ok {
-		delete(d.kafkaConsumerGroups[channel], sub)
+	delete(d.subscriptions, sub.UID)
+	if subsSlice, ok := d.channelSubscriptions[channel]; ok {
+		var newSlice []types.UID
+		for _, oldSub := range subsSlice {
+			if oldSub != sub.UID {
+				newSlice = append(newSlice, oldSub)
+			}
+		}
+		d.channelSubscriptions[channel] = newSlice
+	}
+	if consumer, ok := d.subsConsumerGroups[sub.UID]; ok {
+		delete(d.subsConsumerGroups, sub.UID)
 		return consumer.Close()
 	}
 	return nil
@@ -267,163 +374,19 @@ func (d *KafkaDispatcher) setHostToChannelMap(hcMap map[string]eventingchannels.
 	d.hostToChannelMap.Store(hcMap)
 }
 
-func NewDispatcher(args *KafkaDispatcherArgs) (*KafkaDispatcher, error) {
-	conf := sarama.NewConfig()
-	conf.Version = sarama.V2_0_0_0
-	conf.ClientID = args.ClientID
-	conf.Consumer.Return.Errors = true // Returns the errors in ConsumerGroup#Errors() https://godoc.org/github.com/Shopify/sarama#ConsumerGroup
-	client, err := sarama.NewClient(args.Brokers, conf)
-
-	if err != nil {
-		return nil, fmt.Errorf("unable to create kafka client: %v", err)
-	}
-
-	producer, err := sarama.NewAsyncProducerFromClient(client)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create kafka producer: %v", err)
-	}
-
-	httpTransport, err := cloudevents.NewHTTPTransport(cloudevents.WithBinaryEncoding(), cloudevents.WithMiddleware(tracing.HTTPSpanIgnoringPaths("/readyz")))
-	if err != nil {
-		args.Logger.Fatal("failed to create httpTransport", zap.Error(err))
-	}
-
-	ceClient, err := kncloudevents.NewDefaultClientGivenHttpTransport(httpTransport, args.KnCEConnectionArgs)
-	if err != nil {
-		args.Logger.Fatal("failed to create cloudevents client", zap.Error(err))
-	}
-	dispatcher := &KafkaDispatcher{
-		dispatcher:           eventingchannels.NewEventDispatcher(args.Logger),
-		kafkaConsumerFactory: kafka.NewConsumerGroupFactory(client),
-		kafkaConsumerGroups:  make(map[eventingchannels.ChannelReference]map[subscription]sarama.ConsumerGroup),
-		kafkaAsyncProducer:   producer,
-		logger:               args.Logger,
-		ceClient:             ceClient,
-		handler:              args.Handler,
-		topicFunc:            args.TopicFunc,
-	}
-	receiverFunc, err := eventingchannels.NewEventReceiver(
-		func(ctx context.Context, channel eventingchannels.ChannelReference, event cloudevents.Event) error {
-			dispatcher.kafkaAsyncProducer.Input() <- toKafkaMessage(ctx, channel, event, args.TopicFunc)
-			return nil
-		},
-		args.Logger,
-		eventingchannels.ResolveChannelFromHostHeader(eventingchannels.ResolveChannelFromHostFunc(dispatcher.getChannelReferenceFromHost)))
-	if err != nil {
-		return nil, err
-	}
-
-	dispatcher.receiver = receiverFunc
-	dispatcher.setConfig(&multichannelfanout.Config{})
-	dispatcher.setHostToChannelMap(map[string]eventingchannels.ChannelReference{})
-	dispatcher.topicFunc = args.TopicFunc
-	return dispatcher, nil
-}
-
 func (d *KafkaDispatcher) getChannelReferenceFromHost(host string) (eventingchannels.ChannelReference, error) {
 	chMap := d.getHostToChannelMap()
 	cr, ok := chMap[host]
 	if !ok {
-		return cr, fmt.Errorf("invalid Hostname:%s. Hostname not found in ConfigMap for any Channel", host)
+		return cr, eventingchannels.UnknownHostError(host)
 	}
 	return cr, nil
 }
 
-func fromKafkaMessage(ctx context.Context, kafkaMessage *sarama.ConsumerMessage) *cloudevents.Event {
-	event := cloudevents.NewEvent(cloudevents.VersionV1)
-	for _, header := range kafkaMessage.Headers {
-		h := string(header.Key)
-		v := string(header.Value)
-		logging.FromContext(ctx).Debugf("key: %s, value: %s", h, v)
-		switch h {
-		case "ce_datacontenttype":
-			event.SetDataContentType(v)
-		case "ce_specversion":
-			event.SetSpecVersion(v)
-		case "ce_type":
-			event.SetType(v)
-		case "ce_source":
-			event.SetSource(v)
-		case "ce_id":
-			event.SetID(v)
-		case "ce_time":
-			t, _ := time.Parse(time.RFC3339, v)
-			event.SetTime(t)
-		case "ce_subject":
-			event.SetSubject(v)
-		case "ce_dataschema":
-			event.SetDataSchema(v)
-		default:
-			// Possible Extensions. Note that we only add headers
-			// that start with ce_ to make sure we don't add any
-			// additional kafka headers as extensions.
-			if strings.HasPrefix(h, "ce_") {
-				// if they do not have the ce_ prefix.
-				strippedHeader := strings.TrimPrefix(h, "ce_")
-				if IsAlphaNumeric(strippedHeader) {
-					event.SetExtension(strippedHeader, v)
-				}
-			}
-		}
-	}
-	event.SetData(kafkaMessage.Value)
-	return &event
-}
-
-func toKafkaMessage(ctx context.Context, channel eventingchannels.ChannelReference, event cloudevents.Event, topicFunc TopicFunc) *sarama.ProducerMessage {
-	data, err := event.DataBytes()
-	if err != nil {
-		return &sarama.ProducerMessage{} //this should probably be something else indicating an error
-	}
-
-	kafkaMessage := sarama.ProducerMessage{
-		Topic: topicFunc(utils.KafkaChannelSeparator, channel.Namespace, channel.Name),
-		Value: sarama.ByteEncoder(data),
-	}
-	kafkaMessage = attachKafkaHeaders(kafkaMessage, event)
-	return &kafkaMessage
-}
-
-func attachKafkaHeaders(message sarama.ProducerMessage, event cloudevents.Event) sarama.ProducerMessage {
-	addHeader(&message, "ce_specversion", event.SpecVersion())
-	addHeader(&message, "ce_type", event.Type())
-	addHeader(&message, "ce_source", event.Source())
-	addHeader(&message, "ce_id", event.ID())
-	addHeader(&message, "ce_time", event.Time().Format(time.RFC3339))
-	if event.DataContentType() != "" {
-		addHeader(&message, "ce_datacontenttype", event.DataContentType())
-	}
-	if event.Subject() != "" {
-		addHeader(&message, "ce_subject", event.Subject())
-	}
-	if event.DataSchema() != "" {
-		addHeader(&message, "ce_dataschema", event.DataSchema())
-	}
-	// Only setting string extensions.
-	for k, v := range event.Extensions() {
-		if vs, ok := v.(string); ok {
-			addHeader(&message, "ce_"+k, vs)
-		}
-	}
-	return message
-}
-
-func addHeader(kafkaMessage *sarama.ProducerMessage, key, value string) {
-	kafkaMessage.Headers = append(kafkaMessage.Headers, sarama.RecordHeader{Key: []byte(key), Value: []byte(value)})
-}
-
 func newSubscription(spec eventingduck.SubscriberSpec, name string, namespace string) subscription {
-	sub := subscription{
-		Name:          name,
-		Namespace:     namespace,
-		UID:           string(spec.UID),
-		SubscriberURI: spec.SubscriberURI.String(),
-		ReplyURI:      spec.ReplyURI.String(),
+	return subscription{
+		SubscriberSpec: spec,
+		Name:           name,
+		Namespace:      namespace,
 	}
-	if spec.Delivery != nil {
-		sub.Delivery = eventingchannels.DeliveryOptions{
-			DeadLetterSink: spec.DeadLetterSinkURI.String(),
-		}
-	}
-	return sub
 }

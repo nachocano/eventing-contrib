@@ -35,11 +35,11 @@ func NewDispatcherDoNothing() dispatcher.NatssDispatcher {
 	return &DispatcherDoNothing{}
 }
 
-func (s *DispatcherDoNothing) Start(_ <-chan struct{}) error {
+func (s *DispatcherDoNothing) Start(_ context.Context) error {
 	return nil
 }
 
-func (s *DispatcherDoNothing) UpdateSubscriptions(_ *messagingv1alpha1.Channel, _ bool) (map[eventingduck.SubscriberSpec]error, error) {
+func (s *DispatcherDoNothing) UpdateSubscriptions(_ context.Context, _ *messagingv1alpha1.Channel, _ bool) (map[eventingduck.SubscriberSpec]error, error) {
 	return nil, nil
 }
 
@@ -57,12 +57,12 @@ func NewDispatcherFailNatssSubscription() *DispatcherFailNatssSubscription {
 	return &DispatcherFailNatssSubscription{}
 }
 
-func (s *DispatcherFailNatssSubscription) Start(_ <-chan struct{}) error {
+func (s *DispatcherFailNatssSubscription) Start(_ context.Context) error {
 	return nil
 }
 
 // UpdateSubscriptions returns a failed natss subscription
-func (s *DispatcherFailNatssSubscription) UpdateSubscriptions(channel *messagingv1alpha1.Channel, _ bool) (map[eventingduck.SubscriberSpec]error, error) {
+func (s *DispatcherFailNatssSubscription) UpdateSubscriptions(_ context.Context, channel *messagingv1alpha1.Channel, _ bool) (map[eventingduck.SubscriberSpec]error, error) {
 	failedSubscriptions := make(map[eventingduck.SubscriberSpec]error, 0)
 	for _, sub := range channel.Spec.Subscribable.Subscribers {
 		failedSubscriptions[sub] = errors.New("ups")

@@ -32,7 +32,6 @@ import (
 	"knative.dev/eventing/pkg/apis/eventing/v1alpha1"
 	"knative.dev/eventing/pkg/apis/eventing/v1beta1"
 	flowsv1alpha1 "knative.dev/eventing/pkg/apis/flows/v1alpha1"
-	legacysourcesv1alpha1 "knative.dev/eventing/pkg/apis/legacysources/v1alpha1"
 	messagingv1alpha1 "knative.dev/eventing/pkg/apis/messaging/v1alpha1"
 	sourcesv1alpha1 "knative.dev/eventing/pkg/apis/sources/v1alpha1"
 	"knative.dev/eventing/pkg/utils"
@@ -84,7 +83,7 @@ func (client *Client) CreateSubscriptionOrFail(
 	name, channelName string,
 	channelTypeMeta *metav1.TypeMeta,
 	options ...resources.SubscriptionOption,
-) {
+) *messagingv1alpha1.Subscription {
 	namespace := client.Namespace
 	subscription := resources.Subscription(name, channelName, channelTypeMeta, options...)
 	subscriptions := client.Eventing.MessagingV1alpha1().Subscriptions(namespace)
@@ -95,6 +94,7 @@ func (client *Client) CreateSubscriptionOrFail(
 		client.T.Fatalf("Failed to create subscription %q: %v", name, err)
 	}
 	client.Tracker.AddObj(subscription)
+	return subscription
 }
 
 // CreateSubscriptionOrFailV1Beta1 will create a Subscription or fail the test if there is an error.
@@ -269,28 +269,6 @@ func (client *Client) CreateFlowsParallelOrFail(parallel *flowsv1alpha1.Parallel
 	client.Tracker.AddObj(parallel)
 }
 
-// CreateLegacyCronJobSourceOrFail will create a CronJobSource or fail the test if there is an error.
-func (client *Client) CreateLegacyCronJobSourceOrFail(cronJobSource *legacysourcesv1alpha1.CronJobSource) {
-	client.T.Logf("Creating legacy cronjobsource %+v", cronJobSource)
-	cronJobSourceInterface := client.Legacy.SourcesV1alpha1().CronJobSources(client.Namespace)
-	_, err := cronJobSourceInterface.Create(cronJobSource)
-	if err != nil {
-		client.T.Fatalf("Failed to create cronjobsource %q: %v", cronJobSource.Name, err)
-	}
-	client.Tracker.AddObj(cronJobSource)
-}
-
-// CreateLegacyContainerSourceOrFail will create a ContainerSource or fail the test if there is an error.
-func (client *Client) CreateLegacyContainerSourceOrFail(containerSource *legacysourcesv1alpha1.ContainerSource) {
-	client.T.Logf("Creating legacy containersource %+v", containerSource)
-	containerSourceInterface := client.Legacy.SourcesV1alpha1().ContainerSources(client.Namespace)
-	_, err := containerSourceInterface.Create(containerSource)
-	if err != nil {
-		client.T.Fatalf("Failed to create containersource %q: %v", containerSource.Name, err)
-	}
-	client.Tracker.AddObj(containerSource)
-}
-
 // CreateSinkBindingV1Alpha1OrFail will create a SinkBinding or fail the test if there is an error.
 func (client *Client) CreateSinkBindingV1Alpha1OrFail(sb *sourcesv1alpha1.SinkBinding) {
 	client.T.Logf("Creating sinkbinding %+v", sb)
@@ -313,26 +291,26 @@ func (client *Client) CreateSinkBindingV1Alpha2OrFail(sb *sourcesv1alpha2.SinkBi
 	client.Tracker.AddObj(sb)
 }
 
-// CreateLegacySinkBindingOrFail will create a SinkBinding or fail the test if there is an error.
-func (client *Client) CreateLegacySinkBindingOrFail(sb *legacysourcesv1alpha1.SinkBinding) {
-	client.T.Logf("Creating sinkbinding %+v", sb)
-	sbInterface := client.Legacy.SourcesV1alpha1().SinkBindings(client.Namespace)
-	_, err := sbInterface.Create(sb)
-	if err != nil {
-		client.T.Fatalf("Failed to create sinkbinding %q: %v", sb.Name, err)
-	}
-	client.Tracker.AddObj(sb)
-}
-
 // CreateApiServerSourceOrFail will create an ApiServerSource
-func (client *Client) CreateApiServerSourceOrFail(apiServerSource *sourcesv1alpha1.ApiServerSource) {
+func (client *Client) CreateApiServerSourceOrFail(apiServerSource *sourcesv1alpha2.ApiServerSource) {
 	client.T.Logf("Creating apiserversource %+v", apiServerSource)
-	apiServerInterface := client.Eventing.SourcesV1alpha1().ApiServerSources(client.Namespace)
+	apiServerInterface := client.Eventing.SourcesV1alpha2().ApiServerSources(client.Namespace)
 	_, err := apiServerInterface.Create(apiServerSource)
 	if err != nil {
 		client.T.Fatalf("Failed to create apiserversource %q: %v", apiServerSource.Name, err)
 	}
 	client.Tracker.AddObj(apiServerSource)
+}
+
+// CreateContainerSourceV1Alpha2OrFail will create a ContainerSource.
+func (client *Client) CreateContainerSourceV1Alpha2OrFail(containerSource *sourcesv1alpha2.ContainerSource) {
+	client.T.Logf("Creating containersource %+v", containerSource)
+	containerInterface := client.Eventing.SourcesV1alpha2().ContainerSources(client.Namespace)
+	_, err := containerInterface.Create(containerSource)
+	if err != nil {
+		client.T.Fatalf("Failed to create containersource %q: %v", containerSource.Name, err)
+	}
+	client.Tracker.AddObj(containerSource)
 }
 
 // CreatePingSourceV1Alpha1OrFail will create an PingSource
@@ -355,17 +333,6 @@ func (client *Client) CreatePingSourceV1Alpha2OrFail(pingSource *sourcesv1alpha2
 		client.T.Fatalf("Failed to create pingsource %q: %v", pingSource.Name, err)
 	}
 	client.Tracker.AddObj(pingSource)
-}
-
-// CreateLegacyApiServerSourceOrFail will create an ApiServerSource
-func (client *Client) CreateLegacyApiServerSourceOrFail(apiServerSource *legacysourcesv1alpha1.ApiServerSource) {
-	client.T.Logf("Creating apiserversource %+v", apiServerSource)
-	apiServerInterface := client.Legacy.SourcesV1alpha1().ApiServerSources(client.Namespace)
-	_, err := apiServerInterface.Create(apiServerSource)
-	if err != nil {
-		client.T.Fatalf("Failed to create apiserversource %q: %v", apiServerSource.Name, err)
-	}
-	client.Tracker.AddObj(apiServerSource)
 }
 
 func (client *Client) CreateServiceOrFail(svc *corev1.Service) *corev1.Service {

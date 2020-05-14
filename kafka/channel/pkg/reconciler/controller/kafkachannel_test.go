@@ -22,46 +22,48 @@ import (
 	"testing"
 
 	"github.com/Shopify/sarama"
-	"go.uber.org/zap"
-	"k8s.io/apimachinery/pkg/runtime"
-	"knative.dev/eventing/pkg/reconciler"
-	"knative.dev/eventing/pkg/utils"
-	"knative.dev/pkg/configmap"
-	"knative.dev/pkg/kmeta"
 
-	. "knative.dev/eventing-contrib/kafka/channel/pkg/utils"
+	"go.uber.org/zap"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientgotesting "k8s.io/client-go/testing"
+
+	eventingClient "knative.dev/eventing/pkg/client/injection/client"
+	"knative.dev/eventing/pkg/utils"
+
 	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
+	kubeclient "knative.dev/pkg/client/injection/kube/client"
+	"knative.dev/pkg/configmap"
 	"knative.dev/pkg/controller"
+	"knative.dev/pkg/kmeta"
+	"knative.dev/pkg/logging"
 	logtesting "knative.dev/pkg/logging/testing"
 	. "knative.dev/pkg/reconciler/testing"
 
 	"knative.dev/eventing-contrib/kafka/channel/pkg/apis/messaging/v1alpha1"
 	fakekafkaclient "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/client/fake"
+	"knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/reconciler/messaging/v1alpha1/kafkachannel"
 	"knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/controller/resources"
 	reconcilekafkatesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
 	reconcilertesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
+	. "knative.dev/eventing-contrib/kafka/channel/pkg/utils"
 )
 
 const (
-	systemNS              = "knative-eventing"
 	testNS                = "test-namespace"
 	kcName                = "test-kc"
 	testDispatcherImage   = "test-image"
 	channelServiceAddress = "test-kc-kn-channel.test-namespace.svc.cluster.local"
 	brokerName            = "test-broker"
+	finalizerName         = "kafkachannels.messaging.knative.dev"
 )
 
 var (
-	trueVal = true
-	// deletionTime is used when objects are marked as deleted. Rfc3339Copy()
-	// truncates to seconds to match the loss of precision during serialization.
-	deletionTime = metav1.Now().Rfc3339Copy()
+	finalizerUpdatedEvent = Eventf(corev1.EventTypeNormal, "FinalizerUpdate", `Updated "test-kc" finalizers`)
 )
 
 func init() {
@@ -89,13 +91,8 @@ func TestAllCases(t *testing.T) {
 					reconcilekafkatesting.WithInitKafkaChannelConditions,
 					reconcilekafkatesting.WithKafkaChannelDeleted)},
 			WantErr: false,
-			WantUpdates: []clientgotesting.UpdateActionImpl{{
-				Object: reconcilekafkatesting.NewKafkaChannel(kcName, testNS,
-					reconcilekafkatesting.WithInitKafkaChannelConditions,
-					reconcilekafkatesting.WithKafkaChannelDeleted),
-			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, channelReconciled, "KafkaChannel reconciled"),
+				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "deployment does not exist, automatically created and patching finalizers",
@@ -122,9 +119,10 @@ func TestAllCases(t *testing.T) {
 				patchFinalizers(testNS, kcName),
 			},
 			WantEvents: []string{
+				finalizerUpdatedEvent,
 				Eventf(corev1.EventTypeNormal, dispatcherDeploymentCreated, "Dispatcher deployment created"),
 				Eventf(corev1.EventTypeNormal, dispatcherServiceCreated, "Dispatcher service created"),
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: endpoints \"kafka-ch-dispatcher\" not found"),
+				Eventf(corev1.EventTypeWarning, "InternalError", `endpoints "kafka-ch-dispatcher" not found`),
 			},
 		}, {
 			Name: "Service does not exist, automatically created",
@@ -150,7 +148,7 @@ func TestAllCases(t *testing.T) {
 			}},
 			WantEvents: []string{
 				Eventf(corev1.EventTypeNormal, dispatcherServiceCreated, "Dispatcher service created"),
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: endpoints \"kafka-ch-dispatcher\" not found"),
+				Eventf(corev1.EventTypeWarning, "InternalError", `endpoints "kafka-ch-dispatcher" not found`),
 			},
 		}, {
 			Name: "Endpoints does not exist",
@@ -174,7 +172,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: endpoints \"kafka-ch-dispatcher\" not found"),
+				Eventf(corev1.EventTypeWarning, "InternalError", `endpoints "kafka-ch-dispatcher" not found`),
 			},
 		}, {
 			Name: "Endpoints not ready",
@@ -199,7 +197,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: there are no endpoints ready for Dispatcher service kafka-ch-dispatcher"),
+				Eventf(corev1.EventTypeWarning, "InternalError", `there are no endpoints ready for Dispatcher service kafka-ch-dispatcher`),
 			},
 		}, {
 			Name: "Works, creates new channel",
@@ -229,7 +227,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, channelReconciled, "KafkaChannel reconciled"),
+				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "Works, channel exists",
@@ -257,7 +255,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, channelReconciled, "KafkaChannel reconciled"),
+				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "channel exists, not owned by us",
@@ -268,7 +266,7 @@ func TestAllCases(t *testing.T) {
 				makeReadyEndpoints(),
 				reconcilekafkatesting.NewKafkaChannel(kcName, testNS,
 					reconcilekafkatesting.WithKafkaFinalizer(finalizerName)),
-				makeChannelServiceNotOwnedByUs(reconcilekafkatesting.NewKafkaChannel(kcName, testNS)),
+				makeChannelServiceNotOwnedByUs(),
 			},
 			WantErr: true,
 			WantStatusUpdates: []clientgotesting.UpdateActionImpl{{
@@ -284,7 +282,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: kafkachannel: test-namespace/test-kc does not own Service: \"test-kc-kn-channel\""),
+				Eventf(corev1.EventTypeWarning, "InternalError", `kafkachannel: test-namespace/test-kc does not own Service: "test-kc-kn-channel"`),
 			},
 		}, {
 			Name: "channel does not exist, fails to create",
@@ -316,7 +314,7 @@ func TestAllCases(t *testing.T) {
 				makeChannelService(reconcilekafkatesting.NewKafkaChannel(kcName, testNS)),
 			},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeWarning, channelReconcileFailed, "KafkaChannel reconciliation failed: inducing failure for create services"),
+				Eventf(corev1.EventTypeWarning, "InternalError", "inducing failure for create services"),
 			},
 			// TODO add UTs for topic creation and deletion.
 		},
@@ -325,8 +323,7 @@ func TestAllCases(t *testing.T) {
 
 	table.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
 
-		return &Reconciler{
-			Base:            reconciler.NewBase(ctx, controllerAgentName, cmw),
+		r := &Reconciler{
 			systemNamespace: testNS,
 			dispatcherImage: testDispatcherImage,
 			kafkaConfig: &KafkaConfig{
@@ -340,7 +337,10 @@ func TestAllCases(t *testing.T) {
 			endpointsLister:      listers.GetEndpointsLister(),
 			kafkaClusterAdmin:    &mockClusterAdmin{},
 			kafkaClientSet:       fakekafkaclient.Get(ctx),
+			KubeClientSet:        kubeclient.Get(ctx),
+			EventingClientSet:    eventingClient.Get(ctx),
 		}
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
 }
 
@@ -374,15 +374,14 @@ func TestTopicExists(t *testing.T) {
 			),
 		}},
 		WantEvents: []string{
-			Eventf(corev1.EventTypeNormal, channelReconciled, "KafkaChannel reconciled"),
+			Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
 		},
 	}
 	defer logtesting.ClearAll()
 
 	row.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
 
-		return &Reconciler{
-			Base:            reconciler.NewBase(ctx, controllerAgentName, cmw),
+		r := &Reconciler{
 			systemNamespace: testNS,
 			dispatcherImage: testDispatcherImage,
 			kafkaConfig: &KafkaConfig{
@@ -403,8 +402,11 @@ func TestTopicExists(t *testing.T) {
 					}
 				},
 			},
-			kafkaClientSet: fakekafkaclient.Get(ctx),
+			kafkaClientSet:    fakekafkaclient.Get(ctx),
+			KubeClientSet:     kubeclient.Get(ctx),
+			EventingClientSet: eventingClient.Get(ctx),
 		}
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
 }
 
@@ -442,15 +444,14 @@ func TestDeploymentUpdatedOnImageChange(t *testing.T) {
 		}},
 		WantEvents: []string{
 			Eventf(corev1.EventTypeNormal, dispatcherDeploymentUpdated, "Dispatcher deployment updated"),
-			Eventf(corev1.EventTypeNormal, channelReconciled, "KafkaChannel reconciled"),
+			Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
 		},
 	}
 	defer logtesting.ClearAll()
 
 	row.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
 
-		return &Reconciler{
-			Base:            reconciler.NewBase(ctx, controllerAgentName, cmw),
+		r := &Reconciler{
 			systemNamespace: testNS,
 			dispatcherImage: testDispatcherImage,
 			kafkaConfig: &KafkaConfig{
@@ -471,8 +472,11 @@ func TestDeploymentUpdatedOnImageChange(t *testing.T) {
 					}
 				},
 			},
-			kafkaClientSet: fakekafkaclient.Get(ctx),
+			kafkaClientSet:    fakekafkaclient.Get(ctx),
+			KubeClientSet:     kubeclient.Get(ctx),
+			EventingClientSet: eventingClient.Get(ctx),
 		}
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
 }
 
@@ -600,7 +604,7 @@ func makeChannelService(nc *v1alpha1.KafkaChannel) *corev1.Service {
 	}
 }
 
-func makeChannelServiceNotOwnedByUs(nc *v1alpha1.KafkaChannel) *corev1.Service {
+func makeChannelServiceNotOwnedByUs() *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",

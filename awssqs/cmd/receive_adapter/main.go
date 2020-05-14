@@ -32,7 +32,7 @@ import (
 
 const (
 	// envSinkURI for messages.
-	envSinkURI = "SINK_URI"
+	envSinkURI = "K_SINK"
 
 	// envQueueURL is the URL of the SQS queue to consume messages from.
 	envQueueURL = "AWS_SQS_URL"
@@ -63,7 +63,7 @@ func main() {
 	adapter := &awssqs.Adapter{
 		QueueURL:             getRequiredEnv(envQueueURL),
 		SinkURI:              getRequiredEnv(envSinkURI),
-		CredsFile:            getRequiredEnv(envCredsFile),
+		CredsFile:            os.Getenv(envCredsFile),
 		OnFailedPollWaitSecs: 2,
 	}
 

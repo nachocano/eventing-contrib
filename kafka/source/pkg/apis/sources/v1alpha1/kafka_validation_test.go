@@ -20,18 +20,20 @@ import (
 	"context"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
+	bindingsv1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/bindings/v1alpha1"
 	"knative.dev/pkg/apis"
-	duckv1beta1 "knative.dev/pkg/apis/duck/v1beta1"
+	duckv1 "knative.dev/pkg/apis/duck/v1"
 )
 
 var (
 	fullSpec = KafkaSourceSpec{
-		BootstrapServers: "servers",
-		Topics:           "topics",
-		ConsumerGroup:    "group",
-		Sink: &duckv1beta1.Destination{
-			Ref: &corev1.ObjectReference{
+		KafkaAuthSpec: bindingsv1alpha1.KafkaAuthSpec{
+			BootstrapServers: []string{"servers"},
+		},
+		Topics:        []string{"topics"},
+		ConsumerGroup: "group",
+		Sink: &duckv1.Destination{
+			Ref: &duckv1.KReference{
 				APIVersion: "foo",
 				Kind:       "bar",
 				Namespace:  "baz",
@@ -55,7 +57,7 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 		"Topic changed": {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
-				Topics:             "some-other-topic",
+				Topics:             []string{"some-other-topic"},
 				Sink:               fullSpec.Sink,
 				ServiceAccountName: fullSpec.ServiceAccountName,
 			},
@@ -64,7 +66,9 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 		"Bootstrap servers changed": {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
-				BootstrapServers:   "server1,server2",
+				KafkaAuthSpec: bindingsv1alpha1.KafkaAuthSpec{
+					BootstrapServers: []string{"server1,server2"},
+				},
 				Sink:               fullSpec.Sink,
 				ServiceAccountName: fullSpec.ServiceAccountName,
 			},
@@ -74,8 +78,8 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &duckv1beta1.Destination{
-					Ref: &corev1.ObjectReference{
+				Sink: &duckv1.Destination{
+					Ref: &duckv1.KReference{
 						APIVersion: "some-other-api-version",
 						Kind:       fullSpec.Sink.Ref.APIVersion,
 						Namespace:  fullSpec.Sink.Ref.Namespace,
@@ -90,8 +94,8 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &duckv1beta1.Destination{
-					Ref: &corev1.ObjectReference{
+				Sink: &duckv1.Destination{
+					Ref: &duckv1.KReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       "some-other-kind",
 						Namespace:  fullSpec.Sink.Ref.Namespace,
@@ -106,8 +110,8 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &duckv1beta1.Destination{
-					Ref: &corev1.ObjectReference{
+				Sink: &duckv1.Destination{
+					Ref: &duckv1.KReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
 						Namespace:  "some-other-namespace",
@@ -122,8 +126,8 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &duckv1beta1.Destination{
-					Ref: &corev1.ObjectReference{
+				Sink: &duckv1.Destination{
+					Ref: &duckv1.KReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
 						Namespace:  fullSpec.Sink.Ref.Namespace,
@@ -138,8 +142,8 @@ func TestKafkaSourceCheckImmutableFields(t *testing.T) {
 			orig: &fullSpec,
 			updated: KafkaSourceSpec{
 				Topics: fullSpec.Topics,
-				Sink: &duckv1beta1.Destination{
-					Ref: &corev1.ObjectReference{
+				Sink: &duckv1.Destination{
+					Ref: &duckv1.KReference{
 						APIVersion: fullSpec.Sink.Ref.APIVersion,
 						Kind:       fullSpec.Sink.Ref.Kind,
 						Namespace:  fullSpec.Sink.Ref.Namespace,

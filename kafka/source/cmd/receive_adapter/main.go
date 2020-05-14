@@ -17,10 +17,11 @@ limitations under the License.
 package main
 
 import (
+	"knative.dev/eventing/pkg/adapter/v2"
+
 	kadapter "knative.dev/eventing-contrib/kafka/source/pkg/adapter"
-	"knative.dev/eventing/pkg/adapter"
 )
 
 func main() {
-	adapter.Main("kafkasource", kadapter.NewEnvConfig, kadapter.NewAdapter)
+	adapter.MainMessageAdapter("kafkasource", kadapter.NewEnvConfig, kadapter.NewAdapter)
 }

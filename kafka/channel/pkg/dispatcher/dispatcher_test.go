@@ -23,22 +23,25 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/cloudevents/sdk-go/v2/binding"
+	"go.uber.org/zap/zaptest"
+	"k8s.io/apimachinery/pkg/types"
 	"knative.dev/pkg/apis"
 
 	"github.com/Shopify/sarama"
-	cloudevents "github.com/cloudevents/sdk-go"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"knative.dev/eventing-contrib/kafka/channel/pkg/utils"
-	"knative.dev/eventing-contrib/kafka/common/pkg/kafka"
-	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
+	eventingduck "knative.dev/eventing/pkg/apis/duck/v1beta1"
 	eventingchannels "knative.dev/eventing/pkg/channel"
 	"knative.dev/eventing/pkg/channel/fanout"
 	"knative.dev/eventing/pkg/channel/multichannelfanout"
 	_ "knative.dev/pkg/system/testing"
+
+	"knative.dev/eventing-contrib/kafka/channel/pkg/utils"
+	"knative.dev/eventing-contrib/kafka/common/pkg/kafka"
 )
 
 //----- Mocks
@@ -308,9 +311,11 @@ func TestDispatcher_UpdateConfig(t *testing.T) {
 			t.Logf("Running %s", t.Name())
 			d := &KafkaDispatcher{
 				kafkaConsumerFactory: &mockKafkaConsumerFactory{},
-				kafkaConsumerGroups:  make(map[eventingchannels.ChannelReference]map[subscription]sarama.ConsumerGroup),
+				channelSubscriptions: make(map[eventingchannels.ChannelReference][]types.UID),
+				subsConsumerGroups:   make(map[types.UID]sarama.ConsumerGroup),
+				subscriptions:        make(map[types.UID]subscription),
 				topicFunc:            utils.TopicName,
-				logger:               zap.NewNop(),
+				logger:               zaptest.NewLogger(t),
 			}
 			d.setConfig(&multichannelfanout.Config{})
 			d.setHostToChannelMap(map[string]eventingchannels.ChannelReference{})
@@ -322,10 +327,8 @@ func TestDispatcher_UpdateConfig(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 			oldSubscribers := sets.NewString()
-			for _, subMap := range d.kafkaConsumerGroups {
-				for sub := range subMap {
-					oldSubscribers.Insert(sub.UID)
-				}
+			for _, sub := range d.subscriptions {
+				oldSubscribers.Insert(string(sub.UID))
 			}
 			if diff := sets.NewString(tc.unsubscribes...).Difference(oldSubscribers); diff.Len() != 0 {
 				t.Errorf("subscriptions %+v were never subscribed", diff)
@@ -348,10 +351,8 @@ func TestDispatcher_UpdateConfig(t *testing.T) {
 			}
 
 			var newSubscribers []string
-			for _, subMap := range d.kafkaConsumerGroups {
-				for sub := range subMap {
-					newSubscribers = append(newSubscribers, sub.UID)
-				}
+			for id := range d.subscriptions {
+				newSubscribers = append(newSubscribers, string(id))
 			}
 
 			if diff := cmp.Diff(tc.subscribes, newSubscribers, sortStrings); diff != "" {
@@ -362,109 +363,6 @@ func TestDispatcher_UpdateConfig(t *testing.T) {
 			}
 
 		})
-	}
-}
-
-func TestFromKafkaMessage(t *testing.T) {
-	data := []byte("data")
-	ctx := context.Background()
-	kafkaMessage := &sarama.ConsumerMessage{
-		Headers: []*sarama.RecordHeader{
-			{
-				Key:   []byte("ce_k1"),
-				Value: []byte("v1"),
-			},
-			{
-				Key:   []byte("ce_id"),
-				Value: []byte("im-a-snowflake"),
-			},
-			{
-				Key:   []byte("ce_source"),
-				Value: []byte("testsource"),
-			},
-			{
-				Key:   []byte("ce_type"),
-				Value: []byte("testtype"),
-			},
-			{
-				Key:   []byte("ce_extensionfield"),
-				Value: []byte("testextension"),
-			},
-			{
-				Key:   []byte("anotherkafkaheader"),
-				Value: []byte("notpassedthrough"),
-			},
-		},
-		Value: data,
-	}
-	want := cloudevents.NewEvent(cloudevents.VersionV1)
-	want.SetExtension("k1", "v1")
-	want.SetSource("testsource")
-	want.SetType("testtype")
-	want.SetID("im-a-snowflake")
-	want.SetExtension("extensionfield", "testextension")
-	want.SetData(data)
-
-	var got *cloudevents.Event
-	got = fromKafkaMessage(ctx, kafkaMessage)
-	if diff := cmp.Diff(&want, got); diff != "" {
-		t.Errorf("unexpected message (-want, +got) = %s", diff)
-	}
-}
-
-func TestToKafkaMessage(t *testing.T) {
-	data := []byte("data")
-
-	channelRef := eventingchannels.ChannelReference{
-		Name:      "test-channel",
-		Namespace: "test-ns",
-	}
-
-	event := cloudevents.NewEvent(cloudevents.VersionV1)
-	event.SetExtension("k1", "v1")
-	event.SetID("im-a-snowflake")
-	event.SetSource("testsource")
-	event.SetType("testtype")
-	event.SetData(data)
-
-	want := &sarama.ProducerMessage{
-		Topic: "knative-messaging-kafka.test-ns.test-channel",
-		Headers: []sarama.RecordHeader{
-			{
-				Key:   []byte("ce_specversion"),
-				Value: []byte("1.0"),
-			},
-			{
-				Key:   []byte("ce_type"),
-				Value: []byte("testtype"),
-			},
-			{
-				Key:   []byte("ce_source"),
-				Value: []byte("testsource"),
-			},
-			{
-				Key:   []byte("ce_id"),
-				Value: []byte("im-a-snowflake"),
-			},
-			{
-				Key:   []byte("ce_time"),
-				Value: []byte("ignoreme"),
-			},
-			{
-				Key:   []byte("ce_k1"),
-				Value: []byte("v1"),
-			},
-		},
-		Value: sarama.ByteEncoder(data),
-	}
-
-	got := toKafkaMessage(context.TODO(), channelRef, event, utils.TopicName)
-	got.Headers[4] = sarama.RecordHeader{
-		Key:   []byte("ce_time"),
-		Value: []byte("ignoreme"),
-	}
-	if diff := cmp.Diff(want, got, cmpopts.IgnoreUnexported(sarama.ProducerMessage{})); diff != "" {
-		t.Errorf("unexpected message (-want, +got) = %s", diff)
 	}
 }
 
@@ -501,7 +399,9 @@ func TestSubscribeError(t *testing.T) {
 	}
 
 	subRef := subscription{
-		UID: "test-sub",
+		SubscriberSpec: eventingduck.SubscriberSpec{
+			UID: "test-sub",
+		},
 	}
 	err := d.subscribe(channelRef, subRef)
 	if err == nil {
@@ -522,7 +422,9 @@ func TestUnsubscribeUnknownSub(t *testing.T) {
 	}
 
 	subRef := subscription{
-		UID: "test-sub",
+		SubscriberSpec: eventingduck.SubscriberSpec{
+			UID: "test-sub",
+		},
 	}
 	if err := d.unsubscribe(channelRef, subRef); err != nil {
 		t.Errorf("Unsubscribe error: %v", err)
@@ -537,10 +439,12 @@ func TestKafkaDispatcher_Start(t *testing.T) {
 		t.Errorf("Expected error want %s, got %s", "message receiver is not set", err)
 	}
 
-	receiver, err := eventingchannels.NewEventReceiver(func(ctx context.Context, channel eventingchannels.ChannelReference, event cloudevents.Event) error {
-		return nil
-	}, zap.NewNop(),
-		eventingchannels.ResolveChannelFromHostHeader(eventingchannels.ResolveChannelFromHostFunc(d.getChannelReferenceFromHost)))
+	receiver, err := eventingchannels.NewMessageReceiver(
+		func(ctx context.Context, channel eventingchannels.ChannelReference, message binding.Message, _ []binding.Transformer, _ http.Header) error {
+			return nil
+		},
+		zap.NewNop(),
+		eventingchannels.ResolveMessageChannelFromHostHeader(d.getChannelReferenceFromHost))
 	if err != nil {
 		t.Fatalf("Error creating new message receiver. Error:%s", err)
 	}
@@ -552,14 +456,13 @@ func TestKafkaDispatcher_Start(t *testing.T) {
 }
 
 func TestNewDispatcher(t *testing.T) {
-
 	args := &KafkaDispatcherArgs{
 		ClientID:  "kafka-ch-dispatcher",
-		Brokers:   []string{"127.0.0.1:9092"},
+		Brokers:   []string{"localhost:10000"},
 		TopicFunc: utils.TopicName,
 		Logger:    nil,
 	}
-	_, err := NewDispatcher(args)
+	_, err := NewDispatcher(context.TODO(), args)
 	if err == nil {
 		t.Errorf("Expected error want %s, got %s", "message receiver is not set", err)
 	}

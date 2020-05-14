@@ -22,18 +22,10 @@ import (
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
 )
 
-type subscriptionReference struct {
-	UID           string
-	SubscriberURI string
-	ReplyURI      string
-}
+type subscriptionReference eventingduck.SubscriberSpec
 
 func newSubscriptionReference(spec eventingduck.SubscriberSpec) subscriptionReference {
-	return subscriptionReference{
-		UID:           string(spec.UID),
-		SubscriberURI: spec.SubscriberURI.String(),
-		ReplyURI:      spec.ReplyURI.String(),
-	}
+	return subscriptionReference(spec)
 }
 
 func (r *subscriptionReference) String() string {
