@@ -25,9 +25,8 @@ import (
 	"sync/atomic"
 
 	"github.com/Shopify/sarama"
+	protocolkafka "github.com/cloudevents/sdk-go/protocol/kafka_sarama/v2"
 	"github.com/cloudevents/sdk-go/v2/binding"
-	protocolkafka "github.com/cloudevents/sdk-go/v2/protocol/kafka_sarama"
-	"github.com/google/go-cmp/cmp"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/types"
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1beta1"
@@ -40,15 +39,12 @@ import (
 )
 
 type KafkaDispatcher struct {
-	// TODO: config doesn't have to be atomic as it is read and updated using updateLock.
-	config           atomic.Value
 	hostToChannelMap atomic.Value
 	// hostToChannelMapLock is used to update hostToChannelMap
 	hostToChannelMapLock sync.Mutex
 
-	messageSender *kncloudevents.HttpMessageSender
-	receiver      *eventingchannels.MessageReceiver
-	dispatcher    *eventingchannels.MessageDispatcherImpl
+	receiver   *eventingchannels.MessageReceiver
+	dispatcher *eventingchannels.MessageDispatcherImpl
 
 	kafkaAsyncProducer   sarama.AsyncProducer
 	channelSubscriptions map[eventingchannels.ChannelReference][]types.UID
@@ -73,11 +69,6 @@ func NewDispatcher(ctx context.Context, args *KafkaDispatcherArgs) (*KafkaDispat
 		return nil, fmt.Errorf("unable to create kafka producer: %v", err)
 	}
 
-	messageSender, err := kncloudevents.NewHttpMessageSender(args.KnCEConnectionArgs, "")
-	if err != nil {
-		args.Logger.Fatal("failed to create message sender", zap.Error(err))
-	}
-
 	dispatcher := &KafkaDispatcher{
 		dispatcher:           eventingchannels.NewMessageDispatcher(args.Logger),
 		kafkaConsumerFactory: kafka.NewConsumerGroupFactory(args.Brokers, conf),
@@ -86,7 +77,6 @@ func NewDispatcher(ctx context.Context, args *KafkaDispatcherArgs) (*KafkaDispat
 		subscriptions:        make(map[types.UID]subscription),
 		kafkaAsyncProducer:   producer,
 		logger:               args.Logger,
-		messageSender:        messageSender,
 		topicFunc:            args.TopicFunc,
 	}
 	receiverFunc, err := eventingchannels.NewMessageReceiver(
@@ -111,7 +101,6 @@ func NewDispatcher(ctx context.Context, args *KafkaDispatcherArgs) (*KafkaDispat
 	}
 
 	dispatcher.receiver = receiverFunc
-	dispatcher.setConfig(&multichannelfanout.Config{})
 	dispatcher.setHostToChannelMap(map[string]eventingchannels.ChannelReference{})
 	return dispatcher, nil
 }
@@ -173,13 +162,6 @@ type subscription struct {
 	eventingduck.SubscriberSpec
 	Namespace string
 	Name      string
-}
-
-// configDiff diffs the new config with the existing config. If there are no differences, then the
-// empty string is returned. If there are differences, then a non-empty string is returned
-// describing the differences.
-func (d *KafkaDispatcher) configDiff(updated *multichannelfanout.Config) string {
-	return cmp.Diff(d.getConfig(), updated)
 }
 
 // UpdateKafkaConsumers will be called by new CRD based kafka channel dispatcher controller.
@@ -357,13 +339,6 @@ func (d *KafkaDispatcher) unsubscribe(channel eventingchannels.ChannelReference,
 		return consumer.Close()
 	}
 	return nil
-}
-func (d *KafkaDispatcher) getConfig() *multichannelfanout.Config {
-	return d.config.Load().(*multichannelfanout.Config)
-}
-
-func (d *KafkaDispatcher) setConfig(config *multichannelfanout.Config) {
-	d.config.Store(config)
 }
 
 func (d *KafkaDispatcher) getHostToChannelMap() map[string]eventingchannels.ChannelReference {

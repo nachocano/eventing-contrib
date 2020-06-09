@@ -21,7 +21,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"knative.dev/eventing/pkg/apis/eventing"
 	"knative.dev/eventing/test/lib"
 	"knative.dev/eventing/test/lib/cloudevents"
 	"knative.dev/eventing/test/lib/resources"
@@ -49,12 +48,6 @@ func BrokerDeadLetterSinkTestHelper(t *testing.T,
 		client := lib.Setup(st, true, options...)
 		defer lib.TearDown(client)
 
-		if brokerClass == eventing.ChannelBrokerClassValue {
-			// create required RBAC resources including ServiceAccounts and ClusterRoleBindings for Brokers
-			// create required RBAC resources including ServiceAccounts and ClusterRoleBindings for Brokers
-			client.CreateRBACResourcesForBrokers()
-		}
-
 		// create logger pod and service for deadlettersink
 		loggerPod := resources.EventLoggerPod(loggerPodName)
 		client.CreatePodOrFail(loggerPod, lib.WithService(loggerPodName))
@@ -73,11 +66,11 @@ func BrokerDeadLetterSinkTestHelper(t *testing.T,
 		client.WaitForResourceReadyOrFail(brokerName, lib.BrokerTypeMeta)
 
 		// create trigger to receive the original event, and send to an invalid destination
-		client.CreateTriggerOrFail(
+		client.CreateTriggerOrFailV1Beta1(
 			triggerName,
-			resources.WithBroker(brokerName),
-			resources.WithDeprecatedSourceAndTypeTriggerFilter(eventSource, eventType),
-			resources.WithSubscriberURIForTrigger("http://does-not-exist.svc.cluster.local"),
+			resources.WithBrokerV1Beta1(brokerName),
+			resources.WithAttributesTriggerFilterV1Beta1(eventSource, eventType, nil),
+			resources.WithSubscriberURIForTriggerV1Beta1("http://does-not-exist.svc.cluster.local"),
 		)
 
 		// wait for all test resources to be ready, so that we can start sending events

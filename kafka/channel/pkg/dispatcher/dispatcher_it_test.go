@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/cloudevents/sdk-go/v2/binding"
-	"github.com/cloudevents/sdk-go/v2/binding/test"
 	"github.com/cloudevents/sdk-go/v2/binding/transformer"
 	protocolhttp "github.com/cloudevents/sdk-go/v2/protocol/http"
+	"github.com/cloudevents/sdk-go/v2/test"
 	"go.uber.org/zap"
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1beta1"
 	"knative.dev/eventing/pkg/channel/fanout"
@@ -77,7 +77,7 @@ func TestDispatcher(t *testing.T) {
 	// Start the dispatcher
 	go func() {
 		if err := dispatcher.Start(context.Background()); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 

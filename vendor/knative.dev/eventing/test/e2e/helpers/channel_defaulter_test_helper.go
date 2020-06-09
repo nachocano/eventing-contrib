@@ -23,6 +23,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
@@ -32,6 +33,7 @@ import (
 	"knative.dev/eventing/test/lib/cloudevents"
 	"knative.dev/eventing/test/lib/duck"
 	"knative.dev/eventing/test/lib/resources"
+	reconciler "knative.dev/pkg/reconciler"
 )
 
 const (
@@ -113,8 +115,24 @@ func defaultChannelTestHelper(t *testing.T, client *lib.Client, expectedChannel 
 	if err != nil {
 		t.Fatalf("Failed to list the underlying channels: %v", err)
 	}
-	if len(objs) != 1 {
-		t.Fatalf("The defaultchannel is expected to create 1 underlying channel, but got %d", len(objs))
+
+	// Note that since by default MT ChannelBroker creates a Broker in each namespace, there's
+	// actually two channels.
+	// https://github.com/knative/eventing/issues/3138
+	// So, filter out the broker channel from the list before checking that there's only one.
+	filteredObjs := make([]runtime.Object, 0)
+	for _, o := range objs {
+		if o.(*eventingduck.SubscribableType).Name != "default-kne-trigger" {
+			filteredObjs = append(filteredObjs, o)
+		}
+	}
+
+	if len(filteredObjs) != 1 {
+		t.Logf("Got unexpected channels:")
+		for i, ec := range filteredObjs {
+			t.Logf("Extra channels: %d : %+v", i, ec)
+		}
+		t.Fatalf("The defaultchannel is expected to create 1 underlying channel, but got %d", len(filteredObjs))
 	}
 
 	// send fake CloudEvent to the channel
@@ -133,31 +151,37 @@ func defaultChannelTestHelper(t *testing.T, client *lib.Client, expectedChannel 
 
 // updateDefaultChannelCM will update the default channel configmap
 func updateDefaultChannelCM(client *lib.Client, updateConfig func(config *config.ChannelDefaults)) error {
-	systemNamespace := resources.SystemNamespace
-	cmInterface := client.Kube.Kube.CoreV1().ConfigMaps(systemNamespace)
-	// get the defaultchannel configmap
-	configMap, err := cmInterface.Get(configMapName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	// get the defaultchannel config value
-	defaultChannelConfig, hasDefault := configMap.Data[channelDefaulterKey]
-	config := &config.ChannelDefaults{}
-	if hasDefault {
-		if err := yaml.Unmarshal([]byte(defaultChannelConfig), config); err != nil {
+	cmInterface := client.Kube.Kube.CoreV1().ConfigMaps(resources.SystemNamespace)
+
+	err := reconciler.RetryUpdateConflicts(func(attempts int) (err error) {
+		// get the defaultchannel configmap
+		configMap, err := cmInterface.Get(configMapName, metav1.GetOptions{})
+		if err != nil {
 			return err
 		}
-	}
+		// get the defaultchannel config value
+		defaultChannelConfig, hasDefault := configMap.Data[channelDefaulterKey]
+		config := &config.ChannelDefaults{}
+		if hasDefault {
+			if err := yaml.Unmarshal([]byte(defaultChannelConfig), config); err != nil {
+				return err
+			}
+		}
 
-	// update the defaultchannel config
-	updateConfig(config)
-	configBytes, err := yaml.Marshal(*config)
+		// update the defaultchannel config
+		updateConfig(config)
+		configBytes, err := yaml.Marshal(*config)
+		if err != nil {
+			return err
+		}
+		// update the defaultchannel configmap
+		configMap.Data[channelDefaulterKey] = string(configBytes)
+		_, err = cmInterface.Update(configMap)
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	// update the defaultchannel configmap
-	configMap.Data[channelDefaulterKey] = string(configBytes)
-	_, err = cmInterface.Update(configMap)
 	// In cmd/webhook.go, configMapWatcher watches the configmap changes and set the config for channeldefaulter,
 	// the resync time is set to 0, which means the the resync will be delayed as long as possible (until the upstream
 	// source closes the watch or times out, or you stop the controller)

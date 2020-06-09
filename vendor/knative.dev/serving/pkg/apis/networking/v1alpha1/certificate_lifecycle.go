@@ -50,9 +50,12 @@ func (cs *CertificateStatus) MarkResourceNotOwned(kind, name string) {
 		fmt.Sprintf("There is an existing %s %q that we do not own.", kind, name))
 }
 
-// IsReady returns true is the Certificate is ready.
-func (cs *CertificateStatus) IsReady() bool {
-	return certificateCondSet.Manage(cs).IsHappy()
+// IsReady returns true is the Certificate is ready
+// and the Certificate resource has been observed.
+func (c *Certificate) IsReady() bool {
+	cs := c.Status
+	return cs.ObservedGeneration == c.Generation &&
+		cs.GetCondition(CertificateConditionReady).IsTrue()
 }
 
 // GetCondition gets a specific condition of the Certificate status.
@@ -68,6 +71,11 @@ const (
 )
 
 var certificateCondSet = apis.NewLivingConditionSet(CertificateConditionReady)
+
+// GetConditionSet retrieves the condition set for this resource. Implements the KRShaped interface.
+func (*Certificate) GetConditionSet() apis.ConditionSet {
+	return certificateCondSet
+}
 
 // GetGroupVersionKind returns the GroupVersionKind of Certificate.
 func (c *Certificate) GetGroupVersionKind() schema.GroupVersionKind {

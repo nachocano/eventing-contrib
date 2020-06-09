@@ -22,8 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"knative.dev/eventing/pkg/apis/eventing"
-	"knative.dev/eventing/pkg/apis/eventing/v1alpha1"
+	"knative.dev/eventing/pkg/apis/eventing/v1beta1"
 	"knative.dev/eventing/test/lib"
 	"knative.dev/eventing/test/lib/cloudevents"
 	"knative.dev/eventing/test/lib/resources"
@@ -38,7 +37,7 @@ func EventTransformationForTriggerTestHelper(t *testing.T,
 		senderName = "e2e-eventtransformation-sender"
 		brokerName = "e2e-eventtransformation-broker"
 
-		any          = v1alpha1.TriggerAnyFilter
+		any          = v1beta1.TriggerAnyFilter
 		eventType1   = "type1"
 		eventType2   = "type2"
 		eventSource1 = "source1"
@@ -55,11 +54,6 @@ func EventTransformationForTriggerTestHelper(t *testing.T,
 	channelTestRunner.RunTests(t, lib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
 		client := lib.Setup(st, true, options...)
 		defer lib.TearDown(client)
-
-		if brokerClass == eventing.ChannelBrokerClassValue {
-			// create required RBAC resources including ServiceAccounts and ClusterRoleBindings for Brokers
-			client.CreateRBACResourcesForBrokers()
-		}
 
 		// Create a configmap used by the broker.
 		config := client.CreateBrokerConfigMapOrFail(brokerName, &channel)
@@ -81,11 +75,11 @@ func EventTransformationForTriggerTestHelper(t *testing.T,
 		client.CreatePodOrFail(transformationPod, lib.WithService(transformationPodName))
 
 		// create trigger1 for event transformation
-		client.CreateTriggerOrFail(
+		client.CreateTriggerOrFailV1Beta1(
 			triggerName1,
-			resources.WithBroker(brokerName),
-			resources.WithDeprecatedSourceAndTypeTriggerFilter(eventSource1, eventType1),
-			resources.WithSubscriberServiceRefForTrigger(transformationPodName),
+			resources.WithBrokerV1Beta1(brokerName),
+			resources.WithAttributesTriggerFilterV1Beta1(eventSource1, eventType1, nil),
+			resources.WithSubscriberServiceRefForTriggerV1Beta1(transformationPodName),
 		)
 
 		// create logger pod and service
@@ -93,11 +87,11 @@ func EventTransformationForTriggerTestHelper(t *testing.T,
 		client.CreatePodOrFail(loggerPod, lib.WithService(loggerPodName))
 
 		// create trigger2 for event receiving
-		client.CreateTriggerOrFail(
+		client.CreateTriggerOrFailV1Beta1(
 			triggerName2,
-			resources.WithBroker(brokerName),
-			resources.WithDeprecatedSourceAndTypeTriggerFilter(eventSource2, eventType2),
-			resources.WithSubscriberServiceRefForTrigger(loggerPodName),
+			resources.WithBrokerV1Beta1(brokerName),
+			resources.WithAttributesTriggerFilterV1Beta1(eventSource2, eventType2, nil),
+			resources.WithSubscriberServiceRefForTriggerV1Beta1(loggerPodName),
 		)
 
 		// wait for all test resources to be ready, so that we can start sending events

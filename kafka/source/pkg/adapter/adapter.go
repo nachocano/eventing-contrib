@@ -77,9 +77,11 @@ func NewAdapter(ctx context.Context, processed adapter.EnvConfigAccessor, httpMe
 	}
 }
 
-// --------------------------------------------------------------------
+func (a *Adapter) Start(ctx context.Context) error {
+	return a.start(ctx.Done())
+}
 
-func (a *Adapter) Start(stopCh <-chan struct{}) error {
+func (a *Adapter) start(stopCh <-chan struct{}) error {
 	a.logger.Info("Starting with config: ",
 		zap.String("Topics", strings.Join(a.config.Topics, ",")),
 		zap.String("ConsumerGroup", a.config.ConsumerGroup),
@@ -107,14 +109,10 @@ func (a *Adapter) Start(stopCh <-chan struct{}) error {
 		}
 	}()
 
-	select {
-	case <-stopCh:
-		a.logger.Info("Shutting down...")
-		return nil
-	}
+	<-stopCh
+	a.logger.Info("Shutting down...")
+	return nil
 }
-
-// --------------------------------------------------------------------
 
 func (a *Adapter) Handle(ctx context.Context, msg *sarama.ConsumerMessage) (bool, error) {
 	ctx, span := trace.StartSpan(ctx, "kafka-source")
