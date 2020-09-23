@@ -33,16 +33,16 @@ import (
 	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 
-	sourcesv1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1alpha1"
+	sourcesv1beta1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1beta1"
 )
 
-func (a *Adapter) ConsumerMessageToHttpRequest(ctx context.Context, span *trace.Span, cm *sarama.ConsumerMessage, req *nethttp.Request, logger *zap.Logger) error {
+func (a *Adapter) ConsumerMessageToHttpRequest(ctx context.Context, span *trace.Span, cm *sarama.ConsumerMessage, req *nethttp.Request) error {
 	msg := protocolkafka.NewMessageFromConsumerMessage(cm)
 
 	defer func() {
 		err := msg.Finish(nil)
 		if err != nil {
-			logger.Warn("Something went wrong while trying to finalizing the message", zap.Error(err))
+			a.logger.Warnw("Something went wrong while trying to finalizing the message", zap.Error(err))
 		}
 	}()
 
@@ -54,15 +54,15 @@ func (a *Adapter) ConsumerMessageToHttpRequest(ctx context.Context, span *trace.
 		return http.WriteRequest(ctx, msg, req, tracingExt.WriteTransformer())
 	}
 
-	// Message is not a CloudEvent -> We need to translate it to a valid CloudEvent
+	a.logger.Debug("Message is not a CloudEvent -> We need to translate it to a valid CloudEvent")
 	kafkaMsg := msg
 
 	event := cloudevents.NewEvent()
 
 	event.SetID(makeEventId(cm.Partition, cm.Offset))
 	event.SetTime(cm.Timestamp)
-	event.SetType(sourcesv1alpha1.KafkaEventType)
-	event.SetSource(sourcesv1alpha1.KafkaEventSource(a.config.Namespace, a.config.Name, cm.Topic))
+	event.SetType(sourcesv1beta1.KafkaEventType)
+	event.SetSource(sourcesv1beta1.KafkaEventSource(a.config.Namespace, a.config.Name, cm.Topic))
 	event.SetSubject(makeEventSubject(cm.Partition, cm.Offset))
 
 	dumpKafkaMetaToEvent(&event, a.keyTypeMapper, cm.Key, kafkaMsg)
@@ -97,11 +97,14 @@ func makeEventSubject(partition int32, offset int64) string {
 var replaceBadCharacters = regexp.MustCompile(`[^a-zA-Z0-9]`).ReplaceAllString
 
 func dumpKafkaMetaToEvent(event *cloudevents.Event, keyTypeMapper func([]byte) interface{}, key []byte, msg *protocolkafka.Message) {
-	if key != nil {
+	if len(key) > 0 {
 		event.SetExtension("key", keyTypeMapper(key))
 	}
 	for k, v := range msg.Headers {
-		event.SetExtension("kafkaheader"+replaceBadCharacters(k, ""), string(v))
+		// Let's skip the content-type, we already transport it with datacontenttype field
+		if k != "content-type" {
+			event.SetExtension("kafkaheader"+replaceBadCharacters(k, ""), string(v))
+		}
 	}
 }
 

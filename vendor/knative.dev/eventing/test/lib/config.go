@@ -17,6 +17,8 @@ limitations under the License.
 package lib
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"knative.dev/eventing/test/lib/resources"
@@ -37,22 +39,61 @@ var MessagingChannelTypeMeta = metav1.TypeMeta{
 	Kind:       resources.ChannelKind,
 }
 
-// ChannelFeatureMap saves the channel-features mapping.
+// ComponentFeatureMap saves the channel-features mapping.
 // Each pair means the channel support the list of features.
 var ChannelFeatureMap = map[metav1.TypeMeta][]Feature{
 	InMemoryChannelTypeMeta:  {FeatureBasic},
 	MessagingChannelTypeMeta: {FeatureBasic},
 }
 
+var ApiServerSourceTypeMeta = metav1.TypeMeta{
+	APIVersion: resources.SourcesV1B1APIVersion,
+	Kind:       resources.ApiServerSourceKind,
+}
+
+var PingSourceTypeMeta = metav1.TypeMeta{
+	APIVersion: resources.SourcesV1A2APIVersion,
+	Kind:       resources.PingSourceKind,
+}
+
+var SourceFeatureMap = map[metav1.TypeMeta][]Feature{
+	ApiServerSourceTypeMeta: {FeatureBasic, FeatureLongLiving},
+	PingSourceTypeMeta:      {FeatureBasic, FeatureLongLiving},
+}
+
+var BrokerFeatureMap = map[metav1.TypeMeta][]Feature{
+	*BrokerTypeMeta: {FeatureBasic},
+}
+
 // Feature is the feature supported by the channel.
 type Feature string
 
 const (
-	// FeatureBasic is the feature that should be supported by all channels.
+	// FeatureBasic is the feature that should be supported by all components.
 	FeatureBasic Feature = "basic"
 	// FeatureRedelivery means if downstream rejects an event, that request will be attempted again.
 	FeatureRedelivery Feature = "redelivery"
 	// FeaturePersistence means if channel's Pod goes down, all events already ACKed by the channel
 	// will persist and be retransmitted when the Pod restarts.
 	FeaturePersistence Feature = "persistence"
+	// A long living component
+	FeatureLongLiving Feature = "longliving"
+	// A batch style of components that run once and complete
+	FeatureBatch Feature = "batch"
 )
+
+const (
+	// Default Event values
+	DefaultEventSource = "http://knative.test"
+	DefaultEventType   = "dev.knative.test.event"
+	// The interval and timeout used for polling pod logs.
+	interval = 1 * time.Second
+	timeout  = 4 * time.Minute
+
+	SystemLogsDir = "knative-eventing-logs"
+)
+
+// InterestingHeaders is used by logging pods to decide interesting HTTP headers to log
+func InterestingHeaders() []string {
+	return []string{"Traceparent", "X-Custom-Header"}
+}

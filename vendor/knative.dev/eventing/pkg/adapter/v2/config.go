@@ -17,18 +17,33 @@ package adapter
 
 import (
 	"encoding/json"
+	"time"
 
 	"go.uber.org/zap"
-	tracingconfig "knative.dev/pkg/tracing/config"
 
 	duckv1 "knative.dev/pkg/apis/duck/v1"
+	kle "knative.dev/pkg/leaderelection"
 	"knative.dev/pkg/logging"
 	"knative.dev/pkg/metrics"
+	tracingconfig "knative.dev/pkg/tracing/config"
 
 	"knative.dev/eventing/pkg/tracing"
 )
 
 type EnvConfigConstructor func() EnvConfigAccessor
+
+const (
+	EnvConfigComponent            = "K_COMPONENT"
+	EnvConfigNamespace            = "NAMESPACE"
+	EnvConfigName                 = "NAME"
+	EnvConfigResourceGroup        = "K_RESOURCE_GROUP"
+	EnvConfigSink                 = "K_SINK"
+	EnvConfigCEOverrides          = "K_CE_OVERRIDES"
+	EnvConfigMetricsConfig        = "K_METRICS_CONFIG"
+	EnvConfigLoggingConfig        = "K_LOGGING_CONFIG"
+	EnvConfigTracingConfig        = "K_TRACING_CONFIG"
+	EnvConfigLeaderElectionConfig = "K_LEADER_ELECTION_CONFIG"
+)
 
 // EnvConfig is the minimal set of configuration parameters
 // source adapters should support.
@@ -37,7 +52,7 @@ type EnvConfig struct {
 	Component string `envconfig:"K_COMPONENT"`
 
 	// Environment variable containing the namespace of the adapter.
-	Namespace string `envconfig:"NAMESPACE" required:"true"`
+	Namespace string `envconfig:"NAMESPACE"`
 
 	// Environment variable containing the name of the adapter.
 	Name string `envconfig:"NAME" default:"adapter"`
@@ -55,18 +70,21 @@ type EnvConfig struct {
 	// This is used to configure the metrics exporter options,
 	// the config is stored in a config map inside the controllers
 	// namespace and copied here.
-	MetricsConfigJson string `envconfig:"K_METRICS_CONFIG" required:"true"`
+	MetricsConfigJson string `envconfig:"K_METRICS_CONFIG" default:"{}"`
 
 	// LoggingConfigJson is a json string of logging.Config.
 	// This is used to configure the logging config, the config is stored in
 	// a config map inside the controllers namespace and copied here.
-	LoggingConfigJson string `envconfig:"K_LOGGING_CONFIG" required:"true"`
+	LoggingConfigJson string `envconfig:"K_LOGGING_CONFIG" default:"{}"`
 
 	// TracingConfigJson is a json string of tracing.Config.
 	// This is used to configure the tracing config, the config is stored in
 	// a config map inside the controllers namespace and copied here.
 	// Default is no-op.
 	TracingConfigJson string `envconfig:"K_TRACING_CONFIG"`
+
+	// LeaderElectionConfigJson is the leader election component configuration.
+	LeaderElectionConfigJson string `envconfig:"K_LEADER_ELECTION_CONFIG"`
 }
 
 // EnvConfigAccessor defines accessors for the minimal
@@ -93,6 +111,9 @@ type EnvConfigAccessor interface {
 	SetupTracing(*zap.SugaredLogger) error
 
 	GetCloudEventOverrides() (*duckv1.CloudEventOverrides, error)
+
+	// GetLeaderElectionConfig returns leader election configuration.
+	GetLeaderElectionConfig() (*kle.ComponentConfig, error)
 }
 
 var _ EnvConfigAccessor = (*EnvConfig)(nil)
@@ -154,4 +175,37 @@ func (e *EnvConfig) GetCloudEventOverrides() (*duckv1.CloudEventOverrides, error
 		}
 	}
 	return &ceOverrides, nil
+}
+
+func (e *EnvConfig) GetLeaderElectionConfig() (*kle.ComponentConfig, error) {
+	if e.LeaderElectionConfigJson == "" {
+		return e.defaultLeaderElectionConfig(), nil
+	}
+
+	var config kle.ComponentConfig
+	if err := json.Unmarshal([]byte(e.LeaderElectionConfigJson), &config); err != nil {
+		return e.defaultLeaderElectionConfig(), err
+	}
+	config.Component = e.Component
+	return &config, nil
+}
+
+func (e *EnvConfig) defaultLeaderElectionConfig() *kle.ComponentConfig {
+	return &kle.ComponentConfig{
+		Component:     e.Component,
+		Buckets:       1,
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
+	}
+}
+
+// LeaderElectionComponentConfigToJson converts a ComponentConfig to a json string.
+func LeaderElectionComponentConfigToJson(cfg *kle.ComponentConfig) (string, error) {
+	if cfg == nil {
+		return "", nil
+	}
+
+	jsonCfg, err := json.Marshal(cfg)
+	return string(jsonCfg), err
 }

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -30,8 +31,10 @@ import (
 	"go.uber.org/zap"
 
 	"knative.dev/eventing/pkg/kncloudevents"
-	"knative.dev/eventing/pkg/tracing"
-	"knative.dev/eventing/test/lib"
+	testlib "knative.dev/eventing/test/lib"
+	"knative.dev/eventing/test/lib/dropevents"
+	"knative.dev/eventing/test/lib/recordevents"
+	"knative.dev/eventing/test/test_images"
 )
 
 type eventRecorder struct {
@@ -44,16 +47,16 @@ func newEventRecorder() *eventRecorder {
 
 // Start the recordevents REST api server
 func (er *eventRecorder) StartServer(port int) {
-	http.HandleFunc(lib.GetMinMaxPath, er.handleMinMax)
-	http.HandleFunc(lib.GetEntryPath, er.handleGetEntry)
-	http.HandleFunc(lib.TrimThroughPath, er.handleTrim)
+	http.HandleFunc(recordevents.GetMinMaxPath, er.handleMinMax)
+	http.HandleFunc(recordevents.GetEntryPath, er.handleGetEntry)
+	http.HandleFunc(recordevents.TrimThroughPath, er.handleTrim)
 	go http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
 
 // HTTP handler for GetMinMax requests
 func (er *eventRecorder) handleMinMax(w http.ResponseWriter, r *http.Request) {
 	minAvail, maxSeen := er.es.MinMax()
-	minMax := lib.MinMaxResponse{
+	minMax := recordevents.MinMaxResponse{
 		MinAvail: minAvail,
 		MaxSeen:  maxSeen,
 	}
@@ -71,7 +74,7 @@ func (er *eventRecorder) handleMinMax(w http.ResponseWriter, r *http.Request) {
 func (er *eventRecorder) handleTrim(w http.ResponseWriter, r *http.Request) {
 	// If we extend this much at all we should vendor a better mux(gorilla, etc)
 	path := strings.TrimLeft(r.URL.Path, "/")
-	getPrefix := strings.TrimLeft(lib.TrimThroughPath, "/")
+	getPrefix := strings.TrimLeft(recordevents.TrimThroughPath, "/")
 	suffix := strings.TrimLeft(strings.TrimPrefix(path, getPrefix), "/")
 
 	seqNum, err := strconv.ParseInt(suffix, 10, 32)
@@ -94,7 +97,7 @@ func (er *eventRecorder) handleTrim(w http.ResponseWriter, r *http.Request) {
 func (er *eventRecorder) handleGetEntry(w http.ResponseWriter, r *http.Request) {
 	// If we extend this much at all we should vendor a better mux(gorilla, etc)
 	path := strings.TrimLeft(r.URL.Path, "/")
-	getPrefix := strings.TrimLeft(lib.GetEntryPath, "/")
+	getPrefix := strings.TrimLeft(recordevents.GetEntryPath, "/")
 	suffix := strings.TrimLeft(strings.TrimPrefix(path, getPrefix), "/")
 
 	seqNum, err := strconv.ParseInt(suffix, 10, 32)
@@ -123,7 +126,7 @@ func (er *eventRecorder) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 	er.es.StoreEvent(event, eventErr, map[string][]string(header))
 
-	headerNameList := lib.InterestingHeaders()
+	headerNameList := testlib.InterestingHeaders()
 	for _, headerName := range headerNameList {
 		if headerValue := header.Get(headerName); headerValue != "" {
 			log.Printf("Header %s: %s\n", headerName, headerValue)
@@ -146,14 +149,31 @@ func (er *eventRecorder) ServeHTTP(writer http.ResponseWriter, request *http.Req
 
 func main() {
 	er := newEventRecorder()
-	er.StartServer(lib.RecordEventsPort)
+	er.StartServer(recordevents.RecordEventsPort)
 
 	logger, _ := zap.NewDevelopment()
-	if err := tracing.SetupStaticPublishing(logger.Sugar(), "", tracing.AlwaysSample); err != nil {
+	if err := test_images.ConfigureTracing(logger.Sugar(), ""); err != nil {
 		log.Fatalf("Unable to setup trace publishing: %v", err)
 	}
 
-	err := http.ListenAndServe(":8080", kncloudevents.CreateHandler(er))
+	algorithm, ok := os.LookupEnv(dropevents.SkipAlgorithmKey)
+	handler := kncloudevents.CreateHandler(er)
+	if ok {
+		skipper := dropevents.SkipperAlgorithm(algorithm)
+		counter := dropevents.CounterHandler{
+			Skipper: skipper,
+		}
+		next := handler
+		handler = http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if counter.Skip() {
+				writer.WriteHeader(http.StatusConflict)
+				return
+			}
+			next.ServeHTTP(writer, request)
+		})
+	}
+
+	err := http.ListenAndServe(":8080", handler)
 	if err != nil {
 		panic(err)
 	}

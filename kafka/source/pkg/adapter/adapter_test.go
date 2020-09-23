@@ -22,18 +22,20 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/cloudevents/sdk-go/v2/types"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"knative.dev/eventing/pkg/adapter/v2"
 	"knative.dev/pkg/source"
 
 	"knative.dev/eventing/pkg/kncloudevents"
 
-	sourcesv1alpha1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1alpha1"
+	sourcesv1beta1 "knative.dev/eventing-contrib/kafka/source/pkg/apis/sources/v1beta1"
 )
 
 func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
@@ -61,8 +63,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion": "1.0",
 				"ce-id":          makeEventId(1, 2),
 				"ce-time":        types.FormatTime(aTimestamp),
-				"ce-type":        sourcesv1alpha1.KafkaEventType,
-				"ce-source":      sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":        sourcesv1beta1.KafkaEventType,
+				"ce-source":      sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":     makeEventSubject(1, 2),
 				"ce-key":         "key",
 			},
@@ -83,8 +85,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion": "1.0",
 				"ce-id":          makeEventId(1, 2),
 				"ce-time":        types.FormatTime(aTimestamp),
-				"ce-type":        sourcesv1alpha1.KafkaEventType,
-				"ce-source":      sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":        sourcesv1beta1.KafkaEventType,
+				"ce-source":      sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":     makeEventSubject(1, 2),
 				"ce-key":         "-16771305",
 			},
@@ -106,8 +108,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion": "1.0",
 				"ce-id":          makeEventId(1, 2),
 				"ce-time":        types.FormatTime(aTimestamp),
-				"ce-type":        sourcesv1alpha1.KafkaEventType,
-				"ce-source":      sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":        sourcesv1beta1.KafkaEventType,
+				"ce-source":      sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":     makeEventSubject(1, 2),
 				"ce-key":         "0.00000000000000000000000000000000000002536316309005082",
 			},
@@ -129,8 +131,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion": "1.0",
 				"ce-id":          makeEventId(1, 2),
 				"ce-time":        types.FormatTime(aTimestamp),
-				"ce-type":        sourcesv1alpha1.KafkaEventType,
-				"ce-source":      sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":        sourcesv1beta1.KafkaEventType,
+				"ce-source":      sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":     makeEventSubject(1, 2),
 				"ce-key":         "AQoXFw==",
 			},
@@ -160,8 +162,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion":      "1.0",
 				"ce-id":               makeEventId(1, 2),
 				"ce-time":             types.FormatTime(aTimestamp),
-				"ce-type":             sourcesv1alpha1.KafkaEventType,
-				"ce-source":           sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":             sourcesv1beta1.KafkaEventType,
+				"ce-source":           sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":          makeEventSubject(1, 2),
 				"ce-key":              "key",
 				"ce-kafkaheaderhello": "world",
@@ -192,8 +194,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion":         "1.0",
 				"ce-id":                  makeEventId(1, 2),
 				"ce-time":                types.FormatTime(aTimestamp),
-				"ce-type":                sourcesv1alpha1.KafkaEventType,
-				"ce-source":              sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":                sourcesv1beta1.KafkaEventType,
+				"ce-source":              sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":             makeEventSubject(1, 2),
 				"ce-key":                 "key",
 				"ce-kafkaheaderhellobla": "world",
@@ -304,8 +306,8 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 				"ce-specversion": "1.0",
 				"ce-id":          makeEventId(1, 2),
 				"ce-time":        types.FormatTime(aTimestamp),
-				"ce-type":        sourcesv1alpha1.KafkaEventType,
-				"ce-source":      sourcesv1alpha1.KafkaEventSource("test", "test", "topic1"),
+				"ce-type":        sourcesv1beta1.KafkaEventType,
+				"ce-source":      sourcesv1beta1.KafkaEventSource("test", "test", "topic1"),
 				"ce-subject":     makeEventSubject(1, 2),
 				"ce-key":         "key",
 			},
@@ -349,7 +351,7 @@ func TestPostMessage_ServeHTTP_binary_mode(t *testing.T) {
 					Name:          "test",
 				},
 				httpMessageSender: s,
-				logger:            zap.NewNop(),
+				logger:            zap.NewNop().Sugar(),
 				reporter:          statsReporter,
 				keyTypeMapper:     getKeyTypeMapper(tc.keyTypeMapper),
 			}
@@ -435,8 +437,13 @@ func sinkRejected(writer http.ResponseWriter, _ *http.Request) {
 func TestAdapter_Start(t *testing.T) { // just increase code coverage
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Increasing coverage
+	_ = os.Setenv("KAFKA_BOOTSTRAP_SERVERS", "my-cluster-kafka-bootstrap.my-kafka-namespace:9092")
+
 	a := NewAdapter(ctx, NewEnvConfig(), nil, nil)
-	_ = a.Start(ctx)
+	require.Panics(t, func() {
+		_ = a.Start(ctx)
+	})
 
 	cancel()
 }

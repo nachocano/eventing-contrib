@@ -31,9 +31,8 @@ import (
 	"knative.dev/pkg/logging/logkey"
 )
 
-const ConfigMapNameEnv = "CONFIG_LOGGING_NAME"
-
 const (
+	configMapNameEnv   = "CONFIG_LOGGING_NAME"
 	loggerConfigKey    = "zap-logger-config"
 	fallbackLoggerName = "fallback-logger"
 )
@@ -109,7 +108,7 @@ func newLoggerFromConfig(configJSON string, levelOverride string, opts []zap.Opt
 	}
 
 	logger.Info("Successfully created the logger.")
-	logger.Sugar().Infof("Logging level set to %v", loggingCfg.Level)
+	logger.Info("Logging level set to: " + loggingCfg.Level.String())
 	return logger, loggingCfg.Level, nil
 }
 
@@ -233,11 +232,10 @@ func UpdateLevelFromConfigMap(logger *zap.SugaredLogger, atomicLevel zap.AtomicL
 
 // ConfigMapName gets the name of the logging ConfigMap
 func ConfigMapName() string {
-	cm := os.Getenv(ConfigMapNameEnv)
-	if cm == "" {
-		return "config-logging"
+	if cm := os.Getenv(configMapNameEnv); cm != "" {
+		return cm
 	}
-	return cm
+	return "config-logging"
 }
 
 // JsonToLoggingConfig converts a json string of a Config.

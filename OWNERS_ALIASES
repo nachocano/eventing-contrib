@@ -9,11 +9,6 @@ aliases:
   # These aliases are for OWNERS of the various Source implementations. These
   # Are in addition to the repo level OWNERS.
 
-  awssqs-approvers:
-    - lberk
-  awssqs-reviewers:
-    - lberk
-
   camel-approvers:
     - nicolaferraro
     - matzew
@@ -21,36 +16,12 @@ aliases:
     - nicolaferraro
     - matzew
 
-  github-approvers:
-    - lberk
-    - mattmoor
-  github-reviewers:
-    - lberk
-    - rootfs
-
-  gitlab-approvers:
-    - sebgoa
-    - tzununbekov
-  gitlab-reviewers:
-    - sebgoa
-    - tzununbekov
-
   kafka-approvers:
     - lberk
     - matzew
   kafka-reviewers:
     - lberk
     - matzew
-
-  natss-approvers:
-    - Abd4llA
-  natss-reviewers:
-    - Abd4llA
-
-  couchdb-approvers:
-    - lionelvillard
-  couchdb-reviewers:
-    - lionelvillard
 
   prometheus-approvers:
     - syedriko

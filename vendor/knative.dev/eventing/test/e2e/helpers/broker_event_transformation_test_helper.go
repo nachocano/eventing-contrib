@@ -16,98 +16,130 @@ limitations under the License.
 package helpers
 
 import (
-	"fmt"
+	"context"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/uuid"
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	. "github.com/cloudevents/sdk-go/v2/test"
+	"github.com/google/uuid"
 
-	"knative.dev/eventing/pkg/apis/eventing/v1beta1"
-	"knative.dev/eventing/test/lib"
-	"knative.dev/eventing/test/lib/cloudevents"
+	testlib "knative.dev/eventing/test/lib"
+	"knative.dev/eventing/test/lib/recordevents"
 	"knative.dev/eventing/test/lib/resources"
 )
 
-// EventTransformationForTriggerTestHelper is the helper function for broker_event_tranformation_test
-func EventTransformationForTriggerTestHelper(t *testing.T,
-	brokerClass string,
-	channelTestRunner lib.ChannelTestRunner,
-	options ...lib.SetupClientOption) {
+/*
+EventTransformationForTriggerTestHelper tests the following scenario:
+
+                         5                 4
+                   ------------- ----------------------
+                   |           | |                    |
+             1     v	 2     | v        3           |
+EventSource ---> Broker ---> Trigger1 -------> Service(Transformation)
+                   |
+                   | 6                   7
+                   |-------> Trigger2 -------> Service(Logger)
+
+Note: the number denotes the sequence of the event that flows in this test case.
+*/
+func EventTransformationForTriggerTestHelper(
+	ctx context.Context,
+	t *testing.T,
+	brokerVersion string,
+	triggerVersion string,
+	creator BrokerCreator,
+	options ...testlib.SetupClientOption) {
 	const (
 		senderName = "e2e-eventtransformation-sender"
-		brokerName = "e2e-eventtransformation-broker"
 
-		any          = v1beta1.TriggerAnyFilter
-		eventType1   = "type1"
-		eventType2   = "type2"
-		eventSource1 = "source1"
-		eventSource2 = "source2"
-		eventBody    = "e2e-eventtransformation-body"
+		eventType              = "type1"
+		transformedEventType   = "type2"
+		eventSource            = "source1"
+		transformedEventSource = "source2"
+		eventBody              = `{"msg":"e2e-eventtransformation-body"}`
+		transformedBody        = `{"msg":"transformed body"}`
 
-		triggerName1 = "trigger1"
-		triggerName2 = "trigger2"
+		originalTriggerName    = "trigger1"
+		transformedTriggerName = "trigger2"
 
 		transformationPodName = "trans-pod"
-		loggerPodName         = "logger-pod"
+		recordEventsPodName   = "recordevents-pod"
 	)
 
-	channelTestRunner.RunTests(t, lib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
-		client := lib.Setup(st, true, options...)
-		defer lib.TearDown(client)
+	client := testlib.Setup(t, true, options...)
+	defer testlib.TearDown(client)
 
-		// Create a configmap used by the broker.
-		config := client.CreateBrokerConfigMapOrFail(brokerName, &channel)
+	brokerName := creator(client, brokerVersion)
+	client.WaitForResourceReadyOrFail(brokerName, testlib.BrokerTypeMeta)
 
-		// create a new broker
-		client.CreateBrokerV1Beta1OrFail(brokerName, resources.WithBrokerClassForBrokerV1Beta1(brokerClass), resources.WithConfigForBrokerV1Beta1(config))
-		client.WaitForResourceReadyOrFail(brokerName, lib.BrokerTypeMeta)
+	// create the transformation service
+	transformationPod := resources.EventTransformationPod(
+		transformationPodName,
+		transformedEventType,
+		transformedEventSource,
+		[]byte(transformedBody),
+	)
+	client.CreatePodOrFail(transformationPod, testlib.WithService(transformationPodName))
 
-		// create the event we want to transform to
-		transformedEventBody := fmt.Sprintf("%s %s", eventBody, string(uuid.NewUUID()))
-		eventAfterTransformation := cloudevents.New(
-			fmt.Sprintf(`{"msg":%q}`, transformedEventBody),
-			cloudevents.WithSource(eventSource2),
-			cloudevents.WithType(eventType2),
+	// create trigger1 for event transformation
+	if triggerVersion == "v1" {
+		client.CreateTriggerV1OrFail(
+			originalTriggerName,
+			resources.WithBrokerV1(brokerName),
+			resources.WithAttributesTriggerFilterV1(eventSource, eventType, nil),
+			resources.WithSubscriberServiceRefForTriggerV1(transformationPodName),
 		)
-
-		// create the transformation service
-		transformationPod := resources.EventTransformationPod(transformationPodName, eventAfterTransformation)
-		client.CreatePodOrFail(transformationPod, lib.WithService(transformationPodName))
-
-		// create trigger1 for event transformation
+	} else {
 		client.CreateTriggerOrFailV1Beta1(
-			triggerName1,
+			originalTriggerName,
 			resources.WithBrokerV1Beta1(brokerName),
-			resources.WithAttributesTriggerFilterV1Beta1(eventSource1, eventType1, nil),
+			resources.WithAttributesTriggerFilterV1Beta1(eventSource, eventType, nil),
 			resources.WithSubscriberServiceRefForTriggerV1Beta1(transformationPodName),
 		)
+	}
 
-		// create logger pod and service
-		loggerPod := resources.EventLoggerPod(loggerPodName)
-		client.CreatePodOrFail(loggerPod, lib.WithService(loggerPodName))
-
-		// create trigger2 for event receiving
+	// create logger pod and service
+	eventTracker, _ := recordevents.StartEventRecordOrFail(ctx, client, recordEventsPodName)
+	// create trigger2 for event receiving
+	if triggerVersion == "v1" {
+		client.CreateTriggerV1OrFail(
+			transformedTriggerName,
+			resources.WithBrokerV1(brokerName),
+			resources.WithAttributesTriggerFilterV1(transformedEventSource, transformedEventType, nil),
+			resources.WithSubscriberServiceRefForTriggerV1(recordEventsPodName),
+		)
+	} else {
 		client.CreateTriggerOrFailV1Beta1(
-			triggerName2,
+			transformedTriggerName,
 			resources.WithBrokerV1Beta1(brokerName),
-			resources.WithAttributesTriggerFilterV1Beta1(eventSource2, eventType2, nil),
-			resources.WithSubscriberServiceRefForTriggerV1Beta1(loggerPodName),
+			resources.WithAttributesTriggerFilterV1Beta1(transformedEventSource, transformedEventType, nil),
+			resources.WithSubscriberServiceRefForTriggerV1Beta1(recordEventsPodName),
 		)
+	}
 
-		// wait for all test resources to be ready, so that we can start sending events
-		client.WaitForAllTestResourcesReadyOrFail()
+	// wait for all test resources to be ready, so that we can start sending events
+	client.WaitForAllTestResourcesReadyOrFail(ctx)
 
-		// send fake CloudEvent to the broker
-		eventToSend := cloudevents.New(
-			fmt.Sprintf(`{"msg":%q}`, eventBody),
-			cloudevents.WithSource(eventSource1),
-			cloudevents.WithType(eventType1),
-		)
-		client.SendFakeEventToAddressableOrFail(senderName, brokerName, lib.BrokerTypeMeta, eventToSend)
+	// eventToSend is the event sent as input of the test
+	eventToSend := cloudevents.NewEvent()
+	eventToSend.SetID(uuid.New().String())
+	eventToSend.SetType(eventType)
+	eventToSend.SetSource(eventSource)
+	if err := eventToSend.SetData(cloudevents.ApplicationJSON, []byte(eventBody)); err != nil {
+		t.Fatalf("Cannot set the payload of the event: %s", err.Error())
+	}
+	client.SendEventToAddressable(ctx, senderName, brokerName, testlib.BrokerTypeMeta, eventToSend)
 
-		// check if the logging service receives the correct event
-		if err := client.CheckLog(loggerPodName, lib.CheckerContains(transformedEventBody)); err != nil {
-			st.Fatalf("String %q not found in logs of logger pod %q: %v", transformedEventBody, loggerPodName, err)
-		}
-	})
+	// check if the logging service receives the correct event
+	eventTracker.AssertAtLeast(1, recordevents.MatchEvent(
+		HasSource(transformedEventSource),
+		HasType(transformedEventType),
+		HasData([]byte(transformedBody)),
+	))
+
+	eventTracker.AssertNot(recordevents.MatchEvent(
+		HasSource(eventSource),
+		HasType(eventType),
+		HasData([]byte(eventBody)),
+	))
 }

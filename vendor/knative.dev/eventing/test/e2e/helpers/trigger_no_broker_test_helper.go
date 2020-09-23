@@ -17,6 +17,7 @@ limitations under the License.
 package helpers
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -24,20 +25,24 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"knative.dev/eventing/test/lib"
+
+	testlib "knative.dev/eventing/test/lib"
 	"knative.dev/eventing/test/lib/resources"
 )
 
 // TestTriggerNoBroker will create a Trigger with a non-existent broker, then it will ensure
 // the Status is correctly reflected as failed with BrokerDoesNotExist. Then it will create
 // the broker and ensure that Trigger / Broker will get to Ready state.
-func TestTriggerNoBroker(t *testing.T, channel string, brokerCreator BrokerCreator) {
-	client := lib.Setup(t, true)
-	defer lib.TearDown(client)
+func TestTriggerNoBroker(ctx context.Context, t *testing.T, channel string, brokerCreator BrokerCreator) {
+	t.Skipf("triggers no longer get status written to them by the generic trigger controller.")
+
+	client := testlib.Setup(t, true)
+	defer testlib.TearDown(client)
 	brokerName := strings.ToLower(channel)
-	subscriberName := name("dumper", "", "", map[string]interface{}{})
-	pod := resources.EventLoggerPod(subscriberName)
-	client.CreatePodOrFail(pod, lib.WithService(subscriberName))
+
+	subscriberName := "dumper-empty"
+	eventRecordPod := resources.EventRecordPod(subscriberName)
+	client.CreatePodOrFail(eventRecordPod, testlib.WithService(subscriberName))
 	client.CreateTriggerOrFailV1Beta1("testtrigger",
 		resources.WithSubscriberServiceRefForTriggerV1Beta1(subscriberName),
 		resources.WithBrokerV1Beta1(brokerName),
@@ -45,7 +50,7 @@ func TestTriggerNoBroker(t *testing.T, channel string, brokerCreator BrokerCreat
 
 	// Then make sure the trigger is marked as not ready since there's no broker.
 	err := wait.PollImmediate(1*time.Second, 10*time.Second, func() (bool, error) {
-		trigger, err := client.Eventing.EventingV1beta1().Triggers(client.Namespace).Get("testtrigger", metav1.GetOptions{})
+		trigger, err := client.Eventing.EventingV1beta1().Triggers(client.Namespace).Get(context.Background(), "testtrigger", metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -61,10 +66,10 @@ func TestTriggerNoBroker(t *testing.T, channel string, brokerCreator BrokerCreat
 	}
 
 	// Then create the Broker and just make sure they both come ready.
-	if bn := brokerCreator(client); bn != brokerName {
+	if bn := brokerCreator(client, "v1beta1"); bn != brokerName {
 		t.Fatalf("Broker created with unexpected name, wanted %q got %q", brokerName, bn)
 	}
 
 	// Wait for all test resources to become ready before sending the events.
-	client.WaitForAllTestResourcesReadyOrFail()
+	client.WaitForAllTestResourcesReadyOrFail(ctx)
 }

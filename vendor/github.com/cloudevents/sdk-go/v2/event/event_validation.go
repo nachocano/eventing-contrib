@@ -20,14 +20,14 @@ func (e ValidationError) Error() string {
 
 // Validate performs a spec based validation on this event.
 // Validation is dependent on the spec version specified in the event context.
-func (e Event) Validate() ValidationError {
+func (e Event) Validate() error {
 	if e.Context == nil {
 		return ValidationError{"specversion": fmt.Errorf("missing Event.Context")}
 	}
 
 	errs := map[string]error{}
 	if e.FieldErrors != nil {
-		for k, v := range errs {
+		for k, v := range e.FieldErrors {
 			errs[k] = v
 		}
 	}
@@ -39,7 +39,7 @@ func (e Event) Validate() ValidationError {
 	}
 
 	if len(errs) > 0 {
-		return errs
+		return ValidationError(errs)
 	}
 	return nil
 }

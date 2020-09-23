@@ -34,14 +34,14 @@ import (
 	"knative.dev/pkg/client/injection/kube/informers/core/v1/serviceaccount"
 	"knative.dev/pkg/client/injection/kube/informers/rbac/v1/rolebinding"
 
-	"knative.dev/eventing/pkg/logging"
 	"knative.dev/pkg/configmap"
 	"knative.dev/pkg/controller"
+	"knative.dev/pkg/logging"
 	"knative.dev/pkg/system"
 
 	kafkaChannelClient "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/client"
-	"knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/informers/messaging/v1alpha1/kafkachannel"
-	kafkaChannelReconciler "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/reconciler/messaging/v1alpha1/kafkachannel"
+	"knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/informers/messaging/v1beta1/kafkachannel"
+	kafkaChannelReconciler "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/reconciler/messaging/v1beta1/kafkachannel"
 	eventingClient "knative.dev/eventing/pkg/client/injection/client"
 )
 
@@ -75,7 +75,7 @@ func NewController(
 
 	env := &envConfig{}
 	if err := envconfig.Process("", env); err != nil {
-		logging.FromContext(ctx).Sugar().Panicf("unable to process Kafka channel's required environment variables: %v", err)
+		logging.FromContext(ctx).Panicf("unable to process Kafka channel's required environment variables: %v", err)
 	}
 
 	if env.Image == "" {
@@ -87,7 +87,7 @@ func NewController(
 	impl := kafkaChannelReconciler.NewImpl(ctx, r)
 
 	// Get and Watch the Kakfa config map and dynamically update Kafka configuration.
-	if _, err := kubeclient.Get(ctx).CoreV1().ConfigMaps(system.Namespace()).Get("config-kafka", metav1.GetOptions{}); err == nil {
+	if _, err := kubeclient.Get(ctx).CoreV1().ConfigMaps(system.Namespace()).Get(ctx, "config-kafka", metav1.GetOptions{}); err == nil {
 		cmw.Watch("config-kafka", func(configMap *v1.ConfigMap) {
 			r.updateKafkaConfig(ctx, configMap)
 		})

@@ -17,6 +17,7 @@ limitations under the License.
 package helpers
 
 import (
+	"context"
 	"testing"
 
 	"fmt"
@@ -25,21 +26,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/storage/names"
 
-	"knative.dev/eventing/test/lib"
+	testlib "knative.dev/eventing/test/lib"
 )
 
 func TestChannelChannelableManipulatorClusterRoleTestRunner(
+	ctx context.Context,
 	t *testing.T,
-	channelTestRunner lib.ChannelTestRunner,
-	options ...lib.SetupClientOption,
+	channelTestRunner testlib.ComponentsTestRunner,
+	options ...testlib.SetupClientOption,
 ) {
 
 	const aggregationClusterRoleName = "channelable-manipulator"
 	var permissionTestCaseVerbs = []string{"get", "list", "watch", "update", "patch"}
 
-	channelTestRunner.RunTests(t, lib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
-		client := lib.Setup(st, true, options...)
-		defer lib.TearDown(client)
+	channelTestRunner.RunTests(t, testlib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
+		client := testlib.Setup(st, true, options...)
+		defer testlib.TearDown(client)
 
 		gvr, _ := meta.UnsafeGuessKindToResource(channel.GroupVersionKind())
 
@@ -50,7 +52,7 @@ func TestChannelChannelableManipulatorClusterRoleTestRunner(
 			aggregationClusterRoleName,
 			saName+"-cluster-role-binding",
 		)
-		client.WaitForAllTestResourcesReadyOrFail()
+		client.WaitForAllTestResourcesReadyOrFail(ctx)
 
 		// From spec: (...) ClusterRole MUST include permissions to create, get, list, watch, patch,
 		// and update the CRD's custom objects and their status.

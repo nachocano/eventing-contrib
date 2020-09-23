@@ -17,11 +17,13 @@ limitations under the License.
 package helpers
 
 import (
+	"context"
 	"testing"
 
+	duckv1 "knative.dev/eventing/pkg/apis/duck/v1"
 	duckv1beta1 "knative.dev/eventing/pkg/apis/duck/v1beta1"
-	eventingv1alpha1 "knative.dev/eventing/pkg/apis/messaging/v1alpha1"
-	"knative.dev/eventing/test/lib"
+	eventingv1beta1 "knative.dev/eventing/pkg/apis/messaging/v1beta1"
+	testlib "knative.dev/eventing/test/lib"
 	"knative.dev/eventing/test/lib/resources"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,24 +31,25 @@ import (
 )
 
 // ChannelStatusSubscriberTestHelperWithChannelTestRunner runs the tests of
-// subscriber field of status for all Channels in the ChannelTestRunner.
+// subscriber field of status for all Channels in the ComponentsTestRunner.
 func ChannelStatusSubscriberTestHelperWithChannelTestRunner(
+	ctx context.Context,
 	t *testing.T,
-	channelTestRunner lib.ChannelTestRunner,
-	options ...lib.SetupClientOption,
+	channelTestRunner testlib.ComponentsTestRunner,
+	options ...testlib.SetupClientOption,
 ) {
 
-	channelTestRunner.RunTests(t, lib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
-		client := lib.Setup(st, true, options...)
-		defer lib.TearDown(client)
+	channelTestRunner.RunTests(t, testlib.FeatureBasic, func(st *testing.T, channel metav1.TypeMeta) {
+		client := testlib.Setup(st, true, options...)
+		defer testlib.TearDown(client)
 
 		t.Run("Channel has required status subscriber fields", func(t *testing.T) {
-			channelHasRequiredSubscriberStatus(st, client, channel, options...)
+			channelHasRequiredSubscriberStatus(ctx, st, client, channel, options...)
 		})
 	})
 }
 
-func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, channel metav1.TypeMeta, options ...lib.SetupClientOption) {
+func channelHasRequiredSubscriberStatus(ctx context.Context, st *testing.T, client *testlib.Client, channel metav1.TypeMeta, options ...testlib.SetupClientOption) {
 	st.Logf("Running channel subscriber status conformance test with channel %q", channel)
 
 	channelName := "channel-req-status-subscriber"
@@ -56,8 +59,8 @@ func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, chann
 	client.CreateChannelOrFail(channelName, &channel)
 	client.WaitForResourceReadyOrFail(channelName, &channel)
 
-	pod := resources.EventDetailsPod(subscriberServiceName + "-pod")
-	client.CreatePodOrFail(pod, lib.WithService(subscriberServiceName))
+	pod := resources.EventRecordPod(subscriberServiceName + "-pod")
+	client.CreatePodOrFail(pod, testlib.WithService(subscriberServiceName))
 
 	subscription := client.CreateSubscriptionOrFail(
 		subscriberServiceName,
@@ -67,7 +70,7 @@ func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, chann
 	)
 
 	// wait for all test resources to be ready, so that we can start sending events
-	client.WaitForAllTestResourcesReadyOrFail()
+	client.WaitForAllTestResourcesReadyOrFail(ctx)
 
 	dtsv, err := getChannelDuckTypeSupportVersion(channelName, client, &channel)
 	if err != nil {
@@ -85,7 +88,7 @@ func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, chann
 		if channelable.Status.SubscribableStatus == nil || channelable.Status.SubscribableStatus.Subscribers == nil {
 			st.Fatalf("%q does not have status.subscribers", channel)
 		}
-		ss := findSubscriberStatus(channelable.Status.SubscribableStatus.Subscribers, subscription)
+		ss := findSubscriberStatusV1Beta1(channelable.Status.SubscribableStatus.Subscribers, subscription)
 		if ss == nil {
 			st.Fatalf("No subscription status found for channel %q and subscription %v", channel, subscription)
 		}
@@ -104,7 +107,26 @@ func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, chann
 		if channelable.Status.Subscribers == nil {
 			st.Fatalf("%q does not have status.subscribers", channel)
 		}
-		ss := findSubscriberStatus(channelable.Status.Subscribers, subscription)
+		ss := findSubscriberStatusV1Beta1(channelable.Status.Subscribers, subscription)
+		if ss == nil {
+			st.Fatalf("No subscription status found for channel %q and subscription %v", channel, subscription)
+		}
+
+		// SPEC: The ready field of the subscriber identified by its uid MUST be set to True when the subscription is ready to be processed.
+		if ss.Ready != corev1.ConditionTrue {
+			st.Fatalf("Subscription not ready found for channel %q and subscription %v", channel, subscription)
+		}
+	} else if dtsv == "v1" {
+		channelable, err := getChannelAsV1Channelable(channelName, client, channel)
+		if err != nil {
+			st.Fatalf("Unable to get channel %q to v1 duck type: %q", channel, err)
+		}
+
+		// SPEC: Each subscription to a channel is added to the channel status.subscribers automatically.
+		if channelable.Status.Subscribers == nil {
+			st.Fatalf("%q does not have status.subscribers", channel)
+		}
+		ss := findSubscriberStatusV1(channelable.Status.Subscribers, subscription)
 		if ss == nil {
 			st.Fatalf("No subscription status found for channel %q and subscription %v", channel, subscription)
 		}
@@ -114,11 +136,20 @@ func channelHasRequiredSubscriberStatus(st *testing.T, client *lib.Client, chann
 			st.Fatalf("Subscription not ready found for channel %q and subscription %v", channel, subscription)
 		}
 	} else {
-		st.Fatalf("Channel doesn't support v1alpha1 nor v1beta1 Channel duck types: %v", channel)
+		st.Fatalf("Channel doesn't support v1alpha1, v1beta1 or v1 Channel duck types: %v", channel)
 	}
 }
 
-func findSubscriberStatus(statusArr []duckv1beta1.SubscriberStatus, subscription *eventingv1alpha1.Subscription) *duckv1beta1.SubscriberStatus {
+func findSubscriberStatusV1Beta1(statusArr []duckv1beta1.SubscriberStatus, subscription *eventingv1beta1.Subscription) *duckv1beta1.SubscriberStatus {
+	for _, v := range statusArr {
+		if v.UID == subscription.UID {
+			return &v
+		}
+	}
+	return nil
+}
+
+func findSubscriberStatusV1(statusArr []duckv1.SubscriberStatus, subscription *eventingv1beta1.Subscription) *duckv1.SubscriberStatus {
 	for _, v := range statusArr {
 		if v.UID == subscription.UID {
 			return &v

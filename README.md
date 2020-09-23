@@ -13,11 +13,9 @@ that:
 - Integrate with Apache CouchDB
 - Integrate with Apache Kafka
 - Integrate with AWS SQS
-- Integrate with Ceph
 - Integrate with GitHub
 - Integrate with GitLab
 - Integrate with NATS Streaming
-- Integrate with Prometheus
 - Integrate with Websockets
 - Expose an ingress
 

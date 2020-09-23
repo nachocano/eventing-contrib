@@ -18,38 +18,37 @@ package helpers
 
 import (
 	"github.com/pkg/errors"
-	"knative.dev/eventing/test/lib"
+	testlib "knative.dev/eventing/test/lib"
 	"knative.dev/eventing/test/lib/duck"
 	"knative.dev/eventing/test/lib/resources"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	eventingduckv1 "knative.dev/eventing/pkg/apis/duck/v1"
 	eventingduckv1alpha1 "knative.dev/eventing/pkg/apis/duck/v1alpha1"
 	eventingduckv1beta1 "knative.dev/eventing/pkg/apis/duck/v1beta1"
 
-	messagingv1alpha1 "knative.dev/eventing/pkg/apis/messaging/v1alpha1"
+	"knative.dev/eventing/pkg/apis/messaging"
+	messagingv1 "knative.dev/eventing/pkg/apis/messaging/v1"
 	messagingv1beta1 "knative.dev/eventing/pkg/apis/messaging/v1beta1"
 )
 
-const (
-	SubscribableAnnotationKey = "messaging.knative.dev/subscribable"
-)
-
 var (
-	channelv1alpha1GVK = (&messagingv1alpha1.Channel{}).GetGroupVersionKind()
-	channelv1beta1GVK  = (&messagingv1beta1.Channel{}).GetGroupVersionKind()
-
-	channelv1alpha1 = metav1.TypeMeta{
-		Kind:       channelv1alpha1GVK.Kind,
-		APIVersion: channelv1alpha1GVK.GroupVersion().String(),
-	}
+	channelv1beta1GVK = (&messagingv1beta1.Channel{}).GetGroupVersionKind()
 
 	channelv1beta1 = metav1.TypeMeta{
 		Kind:       channelv1beta1GVK.Kind,
 		APIVersion: channelv1beta1GVK.GroupVersion().String(),
 	}
+
+	channelv1GVK = (&messagingv1.Channel{}).GetGroupVersionKind()
+
+	channelv1 = metav1.TypeMeta{
+		Kind:       channelv1GVK.Kind,
+		APIVersion: channelv1GVK.GroupVersion().String(),
+	}
 )
 
-func getChannelDuckTypeSupportVersion(channelName string, client *lib.Client, channel *metav1.TypeMeta) (string, error) {
+func getChannelDuckTypeSupportVersion(channelName string, client *testlib.Client, channel *metav1.TypeMeta) (string, error) {
 	metaResource := resources.NewMetaResource(channelName, client.Namespace, channel)
 	obj, err := duck.GetGenericObject(client.Dynamic, metaResource, &eventingduckv1beta1.Channelable{})
 	if err != nil {
@@ -59,10 +58,24 @@ func getChannelDuckTypeSupportVersion(channelName string, client *lib.Client, ch
 	if !ok {
 		return "", errors.Wrapf(err, "Unable to cast the channel %v", metaResource)
 	}
-	return channelable.ObjectMeta.Annotations[SubscribableAnnotationKey], nil
+	return channelable.ObjectMeta.Annotations[messaging.SubscribableDuckVersionAnnotation], nil
 }
 
-func getChannelAsV1Beta1Channelable(channelName string, client *lib.Client, channel metav1.TypeMeta) (*eventingduckv1beta1.Channelable, error) {
+func getChannelAsV1Channelable(channelName string, client *testlib.Client, channel metav1.TypeMeta) (*eventingduckv1.Channelable, error) {
+	metaResource := resources.NewMetaResource(channelName, client.Namespace, &channel)
+	obj, err := duck.GetGenericObject(client.Dynamic, metaResource, &eventingduckv1.Channelable{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to get the channel as v1 Channel duck type: %q", channel)
+	}
+	channelable, ok := obj.(*eventingduckv1.Channelable)
+	if !ok {
+		return nil, errors.Errorf("Unable to cast channel %q to v1 duck type", channel)
+	}
+
+	return channelable, nil
+}
+
+func getChannelAsV1Beta1Channelable(channelName string, client *testlib.Client, channel metav1.TypeMeta) (*eventingduckv1beta1.Channelable, error) {
 	metaResource := resources.NewMetaResource(channelName, client.Namespace, &channel)
 	obj, err := duck.GetGenericObject(client.Dynamic, metaResource, &eventingduckv1beta1.Channelable{})
 	if err != nil {
@@ -76,7 +89,7 @@ func getChannelAsV1Beta1Channelable(channelName string, client *lib.Client, chan
 	return channelable, nil
 }
 
-func getChannelAsV1Alpha1Channelable(channelName string, client *lib.Client, channel metav1.TypeMeta) (*eventingduckv1alpha1.Channelable, error) {
+func getChannelAsV1Alpha1Channelable(channelName string, client *testlib.Client, channel metav1.TypeMeta) (*eventingduckv1alpha1.Channelable, error) {
 	metaResource := resources.NewMetaResource(channelName, client.Namespace, &channel)
 	obj, err := duck.GetGenericObject(client.Dynamic, metaResource, &eventingduckv1alpha1.Channelable{})
 	if err != nil {

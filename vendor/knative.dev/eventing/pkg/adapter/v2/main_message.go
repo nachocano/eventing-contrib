@@ -42,7 +42,9 @@ type MessageAdapter interface {
 type MessageAdapterConstructor func(ctx context.Context, env EnvConfigAccessor, adapter *kncloudevents.HttpMessageSender, reporter source.StatsReporter) MessageAdapter
 
 func MainMessageAdapter(component string, ector EnvConfigConstructor, ctor MessageAdapterConstructor) {
-	MainMessageAdapterWithContext(signals.NewContext(), component, ector, ctor)
+	ctx := signals.NewContext()
+
+	MainMessageAdapterWithContext(ctx, component, ector, ctor)
 }
 
 func MainMessageAdapterWithContext(ctx context.Context, component string, ector EnvConfigConstructor, ctor MessageAdapterConstructor) {
@@ -70,7 +72,7 @@ func MainMessageAdapterWithContext(ctx context.Context, component string, ector 
 	if err != nil {
 		logger.Error("failed to process metrics options", zap.Error(err))
 	} else {
-		if err := metrics.UpdateExporter(*metricsConfig, logger); err != nil {
+		if err := metrics.UpdateExporter(ctx, *metricsConfig, logger); err != nil {
 			logger.Error("failed to create the metrics exporter", zap.Error(err))
 		}
 	}
@@ -114,9 +116,8 @@ func MainMessageAdapterWithContext(ctx context.Context, component string, ector 
 	// Configuring the adapter
 	adapter := ctor(ctx, env, httpBindingsSender, reporter)
 
-	logger.Info("Starting Receive MessageAdapter", zap.Any("adapter", adapter))
-
+	// Finally start the adapter (blocking)
 	if err := adapter.Start(ctx); err != nil {
-		logger.Warn("start returned an error", zap.Error(err))
+		logging.FromContext(ctx).Warn("Start returned an error", zap.Error(err))
 	}
 }

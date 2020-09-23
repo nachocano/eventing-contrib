@@ -19,22 +19,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/cloudevents/sdk-go/v2/protocol"
 	"github.com/cloudevents/sdk-go/v2/protocol/http"
+	"go.opencensus.io/plugin/ochttp"
+	"knative.dev/eventing/pkg/adapter/v2/util/crstatusevent"
 	duckv1 "knative.dev/pkg/apis/duck/v1"
 	"knative.dev/pkg/source"
+	"knative.dev/pkg/tracing/propagation/tracecontextb3"
 )
 
 // NewCloudEventsClient returns a client that will apply the ceOverrides to
 // outbound events and report outbound event counts.
 func NewCloudEventsClient(target string, ceOverrides *duckv1.CloudEventOverrides, reporter source.StatsReporter) (cloudevents.Client, error) {
+	return NewCloudEventsClientCRStatus(target, ceOverrides, reporter, nil)
+}
+func NewCloudEventsClientCRStatus(target string, ceOverrides *duckv1.CloudEventOverrides, reporter source.StatsReporter, crStatusEventClient *crstatusevent.CRStatusEventClient) (cloudevents.Client, error) {
 	pOpts := make([]http.Option, 0)
 	if len(target) > 0 {
 		pOpts = append(pOpts, cloudevents.WithTarget(target))
 	}
+	pOpts = append(pOpts, cloudevents.WithRoundTripper(&ochttp.Transport{
+		Propagation: tracecontextb3.TraceContextEgress,
+	}))
 
 	p, err := cloudevents.NewHTTP(pOpts...)
 	if err != nil {
@@ -42,20 +52,26 @@ func NewCloudEventsClient(target string, ceOverrides *duckv1.CloudEventOverrides
 	}
 
 	ceClient, err := cloudevents.NewClientObserved(p, cloudevents.WithTimeNow(), cloudevents.WithUUIDs())
+
+	if crStatusEventClient == nil {
+		crStatusEventClient = crstatusevent.GetDefaultClient()
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &client{
-		ceClient:    ceClient,
-		ceOverrides: ceOverrides,
-		reporter:    reporter,
+		ceClient:            ceClient,
+		ceOverrides:         ceOverrides,
+		reporter:            reporter,
+		crStatusEventClient: *crStatusEventClient,
 	}, nil
 }
 
 type client struct {
-	ceClient    cloudevents.Client
-	ceOverrides *duckv1.CloudEventOverrides
-	reporter    source.StatsReporter
+	ceClient            cloudevents.Client
+	ceOverrides         *duckv1.CloudEventOverrides
+	reporter            source.StatsReporter
+	crStatusEventClient crstatusevent.CRStatusEventClient
 }
 
 var _ cloudevents.Client = (*client)(nil)
@@ -97,27 +113,52 @@ func (c *client) reportCount(ctx context.Context, event cloudevents.Event, resul
 		ResourceGroup: tags.ResourceGroup,
 	}
 
+	var rres *http.RetriesResult
+	if cloudevents.ResultAs(result, &rres) {
+		result = rres.Result
+	}
+
 	if cloudevents.IsACK(result) {
 		var res *http.Result
+
 		if !cloudevents.ResultAs(result, &res) {
-			return fmt.Errorf("protocol.Result is not http.Result")
+			return c.reportError(reportArgs, result)
 		}
 
 		_ = c.reporter.ReportEventCount(reportArgs, res.StatusCode)
 	} else {
+		c.crStatusEventClient.ReportCRStatusEvent(ctx, result)
+
 		var res *http.Result
 		if !cloudevents.ResultAs(result, &res) {
-			return result
+			return c.reportError(reportArgs, result)
 		}
 
 		if rErr := c.reporter.ReportEventCount(reportArgs, res.StatusCode); rErr != nil {
 			// metrics is not important enough to return an error if it is setup wrong.
 			// So combine reporter error with ce error if not nil.
 			if result != nil {
-				result = fmt.Errorf("%w\nmetrics reporter errror: %s", result, rErr)
+				result = fmt.Errorf("%w\nmetrics reporter error: %s", result, rErr)
 			}
 		}
 	}
+	return result
+}
+
+func (c *client) reportError(reportArgs *source.ReportArgs, result protocol.Result) error {
+	err := errors.Unwrap(result)
+	if uerr, ok := err.(*url.Error); ok {
+		reportArgs.Timeout = uerr.Timeout()
+	}
+	reportArgs.Error = err.Error()
+	if rErr := c.reporter.ReportEventCount(reportArgs, 0); rErr != nil {
+		// metrics is not important enough to return an error if it is setup wrong.
+		// So combine reporter error with ce error if not nil.
+		if result != nil {
+			result = fmt.Errorf("%w\nmetrics reporter error: %s", result, rErr)
+		}
+	}
+
 	return result
 }
 

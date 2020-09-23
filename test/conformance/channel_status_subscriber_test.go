@@ -19,12 +19,13 @@ limitations under the License.
 package conformance
 
 import (
+	"context"
 	"testing"
 
 	eventingconformancehelpers "knative.dev/eventing/test/conformance/helpers"
-	"knative.dev/eventing/test/lib"
+	testlib "knative.dev/eventing/test/lib"
 )
 
 func TestChannelStatusSubscriber(t *testing.T) {
-	eventingconformancehelpers.ChannelStatusSubscriberTestHelperWithChannelTestRunner(t, channelTestRunner, lib.SetupClientOptionNoop)
+	eventingconformancehelpers.ChannelStatusSubscriberTestHelperWithChannelTestRunner(context.Background(), t, channelTestRunner, testlib.SetupClientOptionNoop)
 }
